@@ -1,6 +1,8 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## 鉦富機械 ERP V2
 
-## Getting Started
+本專案為鉦富機械 ERP V2（Next.js + TypeScript + Tailwind 4）原型，聚焦廢水處理第一階段業務（油水分離機、機械式攔汙柵等）的流程數位化。所有模組需遵循公司治理與序號規則，並與 PDM / BOM / 生產履歷整合。
+
+### 快速啟動
 
 First, run the development server:
 
@@ -14,23 +16,22 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+主要路由：
+- `/`：營運儀表首頁
+- `/master`：主檔中心
+- `/master/users`：使用者主檔（統一篩選介面）
+- `/master/sequences`：序號治理模組
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 統一序號規則
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+自 2025-11-18 起，所有模組建檔必須透過序號模組取得正式編碼，禁止自行組合 prefix 或流水號。相關規範與 API 介面詳見 `docs/sequence-policy.md` 與 `src/lib/sequenceManager.ts`。
 
-## Learn More
+- `peekSequence(key)`：預覽下一個號碼
+- `issueSequence(key)`：正式取號並自動遞增
+- `formatSequenceNumber(key, value)`：統一格式化規則
 
-To learn more about Next.js, take a look at the following resources:
+若需新增模組，必須在需求文件中註記「序號來源：Sequences」，並在程式內呼叫上述 API；違反規範的程式碼不得合併。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 權限與公司背景
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`docs/company-prompt.md` 收錄張祐豪提供的完整公司背景、營運模式與顧問要求；`docs/permissions.md` 與 `docs/firebase-permissions.md` 詳述多角色/多部門權限矩陣、Firebase claims、Security Rules 模板，以及前端 `usePermission`/`PermissionGate` 使用方式。若要部署 Cloud Functions，請依 `docs/firebase-deploy.md` 步驟操作。

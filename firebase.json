@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "source": "firebase/functions"
+  },
+  "hosting": [
+    {
+      "site": "jenfu-erp-v2",
+      "source": ".",
+      "frameworksBackend": {}
+    }
+  ]
+}
+
