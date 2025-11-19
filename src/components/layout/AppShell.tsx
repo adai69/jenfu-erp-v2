@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const navItems = [
   { label: "總覽", description: "即時 KPI 與工單負載", href: "/" },
@@ -15,11 +19,73 @@ const navItems = [
   { label: "供應協同", description: "供應商、採購、付款", href: "/suppliers" },
 ];
 
+const COMMON_NAV_COUNT = 5;
+const commonNavItems = navItems.slice(0, COMMON_NAV_COUNT);
+const extraNavItems = navItems.slice(COMMON_NAV_COUNT);
+const navChipClass =
+  "whitespace-nowrap rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-teal-500 hover:bg-teal-50 hover:text-teal-700";
+
 type AppShellProps = {
   children: ReactNode;
 };
 
 export function AppShell({ children }: AppShellProps) {
+  const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isMoreOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
+        setIsMoreOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isMoreOpen]);
+
+  const isLoggedIn = Boolean(user);
+  const displayName = user?.displayName || user?.email || "訪客";
+  const initials = displayName
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .substring(0, 2)
+    .toUpperCase();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("logout failed", error);
+    }
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="flex min-h-screen flex-col bg-white">
+        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-teal-600">ERP V2</p>
+            <h1 className="text-lg font-semibold text-slate-900">鉦富機械登入</h1>
+          </div>
+          <Link
+            href="/login"
+            className="rounded-full border border-teal-500 px-4 py-2 text-sm font-semibold text-teal-600 hover:bg-teal-50"
+          >
+            前往登入
+          </Link>
+        </header>
+        <main className="flex flex-1 flex-col bg-slate-50">{children}</main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-50 text-slate-900">
       <aside className="hidden w-72 flex-col border-r border-slate-200 bg-white px-5 py-6 lg:flex">
@@ -67,14 +133,79 @@ export function AppShell({ children }: AppShellProps) {
               週期目標：交期準確率、毛利率、庫存週轉天數
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-4">
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              onClick={toggleTheme}
+              aria-label="切換顯示模式"
+              className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 theme-transition"
+            >
+              {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+            </button>
             <div className="text-right">
-              <p className="text-sm font-semibold text-slate-900">張仕杰</p>
-              <p className="text-xs text-slate-500">總經理 · 研發 / 財務</p>
+              <p className="text-sm font-semibold text-slate-900">{displayName}</p>
+              <p className="text-xs text-slate-500">已登入使用者</p>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-600 text-sm font-semibold text-white">
-              JS
+              {initials || "JS"}
             </div>
+            {isLoggedIn ? (
+              <button
+                onClick={handleLogout}
+                className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                登出
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="rounded-full border border-teal-500 px-3 py-1 text-xs font-semibold text-teal-600 hover:bg-teal-50"
+              >
+                登入
+              </Link>
+            )}
+          </div>
+          <div className="flex w-full basis-full flex-wrap items-start gap-3 pt-2">
+            <nav aria-label="常用捷徑" className="flex flex-1 flex-wrap gap-3">
+              {commonNavItems.map((item) => (
+                <Link key={item.href} href={item.href} className={navChipClass}>
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            {extraNavItems.length > 0 && (
+              <div className="relative" ref={moreMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsMoreOpen((prev) => !prev)}
+                  aria-haspopup="menu"
+                  aria-expanded={isMoreOpen}
+                  className={`${navChipClass} flex items-center gap-1`}
+                >
+                  更多模組
+                  <span className="text-xs text-slate-500">{isMoreOpen ? "▲" : "▼"}</span>
+                </button>
+                {isMoreOpen && (
+                  <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                    <p className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      其它模組
+                    </p>
+                    <div className="mt-1 space-y-1">
+                      {extraNavItems.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setIsMoreOpen(false)}
+                          className="block rounded-xl px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-teal-600"
+                        >
+                          <span className="block">{item.label}</span>
+                          <span className="text-xs font-normal text-slate-500">{item.description}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </header>
 

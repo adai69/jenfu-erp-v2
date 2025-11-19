@@ -1,11 +1,50 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f7fb;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --background: #f8fafc;
   --foreground: #0f172a;
-  --brand-primary: #0f766e;
-  --brand-accent: #3dd5b1;
-  --brand-muted: #e2e8f0;
+  --surface-muted: #f1f5f9;
+  --surface-card: #ffffff;
+  --surface-strong: #0f172a;
+
+  --border-color: #e2e8f0;
+
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-on-strong: #e2e8f0;
+
+  --accent: #0d9488;
+  --accent-strong: #0f766e;
+  --accent-soft: #ccfbf1;
+  --accent-contrast: #ffffff;
+
+  --success-bg: #ecfdf5;
+  --success-text: #047857;
+}
+
+[data-theme="dark"] {
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --surface-muted: #111827;
+  --surface-card: #1f2937;
+  --surface-strong: #020617;
+
+  --border-color: #334155;
+
+  --text-secondary: #cbd5f5;
+  --text-muted: #94a3b8;
+  --text-on-strong: #e2e8f0;
+
+  --accent: #14b8a6;
+  --accent-strong: #0d9488;
+  --accent-soft: #134e4a;
+  --accent-contrast: #022c22;
+
+  --success-bg: #064e3b;
+  --success-text: #6ee7b7;
 }
 
 @theme inline {
@@ -15,13 +54,6 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #05080f;
-    --foreground: #e2e8f0;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
@@ -29,4 +61,104 @@ body {
     BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100vh;
   margin: 0;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.bg-white {
+  background-color: var(--surface-card) !important;
+}
+
+.bg-slate-50 {
+  background-color: var(--surface-muted) !important;
+}
+
+.bg-slate-900 {
+  background-color: var(--surface-strong) !important;
+  color: var(--text-on-strong) !important;
+}
+
+.bg-slate-900\/5 {
+  background-color: color-mix(in srgb, var(--surface-strong) 5%, transparent) !important;
+}
+
+.bg-slate-900\/10 {
+  background-color: color-mix(in srgb, var(--surface-strong) 10%, transparent) !important;
+}
+
+.text-slate-900,
+.text-slate-800 {
+  color: var(--foreground) !important;
+}
+
+.text-slate-700,
+.text-slate-600,
+.text-slate-500 {
+  color: var(--text-secondary) !important;
+}
+
+.text-slate-400,
+.text-slate-300 {
+  color: var(--text-muted) !important;
+}
+
+.text-slate-200 {
+  color: color-mix(in srgb, var(--text-on-strong) 70%, var(--surface-strong) 30%) !important;
+}
+
+.border-slate-200,
+.border-slate-100 {
+  border-color: var(--border-color) !important;
+}
+
+.bg-teal-600,
+.bg-teal-500 {
+  background-color: var(--accent) !important;
+  color: var(--accent-contrast) !important;
+}
+
+.hover\:bg-teal-50:hover,
+.bg-teal-50 {
+  background-color: var(--accent-soft) !important;
+  color: var(--accent) !important;
+}
+
+.text-teal-600,
+.text-teal-500 {
+  color: var(--accent) !important;
+}
+
+.border-teal-500,
+.border-teal-600 {
+  border-color: var(--accent) !important;
+}
+
+.bg-emerald-50 {
+  background-color: var(--success-bg) !important;
+  color: var(--success-text) !important;
+}
+
+.text-emerald-700 {
+  color: var(--success-text) !important;
+}
+
+.bg-slate-900 .text-white {
+  color: var(--text-on-strong) !important;
+}
+
+.text-white {
+  color: var(--accent-contrast) !important;
+}
+
+.chip-muted {
+  background-color: color-mix(in srgb, var(--foreground) 8%, transparent);
+  color: var(--foreground);
+}
+
+.theme-transition {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease;
 }
