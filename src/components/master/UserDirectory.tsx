@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { users } from "@/data/masterRecords";
+import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import { issueSequence } from "@/lib/sequenceManager";
 import { ACTION_LABELS, MODULE_DEFINITIONS } from "@/lib/permissionMatrix";
 import {
@@ -14,6 +14,8 @@ import {
 } from "@/types/auth";
 import type { User } from "@/types/master";
 import { usePermission } from "@/hooks/usePermission";
+import { auth, db } from "@/lib/firebaseClient";
+import { useAuth } from "@/contexts/AuthContext";
 
 type RoleFilterValue = "all" | RoleId;
 type StatusFilterValue = "all" | "active" | "inactive";
@@ -61,6 +63,7 @@ const moduleActionPreset: Partial<Record<PermissionModule, PermissionAction[]>> 
 };
 
 const defaultModuleActions: PermissionAction[] = ["view", "create", "update"];
+const DEFAULT_PASSWORD = "12345678";
 
 type FilterState = {
   keyword: string;
@@ -93,12 +96,18 @@ const defaultFilters: FilterState = {
 };
 
 export function UserDirectory() {
-  const [userRecords, setUserRecords] = useState<User[]>(users);
+  const { user: authUser } = useAuth();
+
+  const [userRecords, setUserRecords] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [formState, setFormState] = useState<FilterState>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(defaultFilters);
   const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [createForm, setCreateForm] = useState<CreateUserForm>(() => createDefaultForm());
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createSuccess, setCreateSuccess] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     if (showCreatePanel) {
@@ -110,19 +119,67 @@ export function UserDirectory() {
     }
   }, [showCreatePanel]);
 
-  const sessionUser = userRecords[0];
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, "users"));
+        const loaded: User[] = snapshot.docs.map((userDoc) => {
+          const data = userDoc.data() as any;
+          const roles = data.roles ?? [];
+          const primaryRole: RoleId =
+            data.primaryRole ?? roles.find((assignment: any) => assignment.isPrimary)?.role ?? "manager";
+          const departments = data.departments ?? [];
+          return {
+            id: data.id ?? userDoc.id,
+            name: data.name ?? "",
+            email: data.email ?? "",
+            primaryRole,
+            roles,
+            departments,
+            status: (data.status as "active" | "inactive") ?? "active",
+            moduleOverrides: data.overrides,
+          };
+        });
+
+        setUserRecords(loaded);
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load users from Firestore", error);
+        setLoadError("讀取雲端使用者資料失敗，請稍後再試。");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
+
+  const sessionUser = useMemo(() => {
+    const email = authUser?.email?.toLowerCase();
+    if (!email) return undefined;
+    return userRecords.find((user) => user.email.toLowerCase() === email);
+  }, [authUser, userRecords]);
+
   const personaAssignments = useMemo(
     () => sessionUser?.roles ?? [],
     [sessionUser],
   );
 
-  const [activePersonaRole, setActivePersonaRole] = useState<RoleId | undefined>(
-    personaAssignments[0]?.role,
-  );
+  const [activePersonaRole, setActivePersonaRole] = useState<RoleId | undefined>();
   const [activePersonaDept, setActivePersonaDept] = useState<PersonaDeptValue>("all");
 
+  useEffect(() => {
+    if (personaAssignments.length) {
+      setActivePersonaRole((prev) => prev ?? personaAssignments[0]?.role);
+      setActivePersonaDept("all");
+    } else {
+      setActivePersonaRole(undefined);
+      setActivePersonaDept("all");
+    }
+  }, [personaAssignments]);
+
   const personaDeptOptions = useMemo<PersonaDeptValue[]>(() => {
-    if (!activePersonaRole) return ["all"];
+    if (!activePersonaRole || !personaAssignments.length) return ["all"];
     const deptSet = new Set<DepartmentId>();
     personaAssignments
       .filter((assignment) => assignment.role === activePersonaRole)
@@ -221,11 +278,13 @@ export function UserDirectory() {
     });
   };
 
-  const handleCreateSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!canCreateUsers) {
-      setCreateError("目前視角沒有新增使用者權限");
+    if (isCreating) return;
+
+    if (!sessionUser || !canCreateUsers) {
+      setCreateError("目前帳號沒有新增使用者權限");
       return;
     }
     if (!createForm.name.trim()) {
@@ -241,11 +300,24 @@ export function UserDirectory() {
       return;
     }
 
+    const normalizedEmail = createForm.email.trim().toLowerCase();
+    const duplicated = userRecords.some(
+      (user) => user.email.toLowerCase() === normalizedEmail,
+    );
+    if (duplicated) {
+      setCreateError("此 Email 已存在，請勿重複建立相同使用者。");
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateSuccess(null);
+
     let newId = "";
     try {
       const issued = issueSequence("USER");
       newId = issued.value;
     } catch {
+      setIsCreating(false);
       setCreateError("取得序號時發生問題，請稍後再試");
       return;
     }
@@ -276,18 +348,55 @@ export function UserDirectory() {
       ...(moduleOverrides ? { moduleOverrides } : {}),
     };
 
-    setUserRecords((prev) => [...prev, newUser]);
-    setShowCreatePanel(false);
-    setCreateForm(createDefaultForm());
-    setCreateError(null);
-    setFormState(defaultFilters);
-    setAppliedFilters(defaultFilters);
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      setIsCreating(false);
+      setCreateError("登入狀態失效，請重新登入後再試。");
+      return;
+    }
+
+    try {
+      const requestPayload: Record<string, unknown> = {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        primaryRole: newUser.primaryRole,
+        status: newUser.status,
+        roles: newUser.roles,
+        departments: newUser.departments,
+      };
+      if (moduleOverrides) {
+        requestPayload.overrides = moduleOverrides;
+      }
+
+      await addDoc(collection(db, "userProvisioning"), {
+        requestedBy: currentUser.email?.toLowerCase() ?? "",
+        payload: requestPayload,
+        state: "pending",
+        createdAt: serverTimestamp(),
+      });
+
+      setUserRecords((prev) => [...prev, newUser]);
+      setShowCreatePanel(false);
+      setCreateForm(createDefaultForm());
+      setCreateError(null);
+      setCreateSuccess(`已送出建立請求，預設密碼為 ${DEFAULT_PASSWORD}，完成後即可登入。`);
+      setFormState(defaultFilters);
+      setAppliedFilters(defaultFilters);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to enqueue managed user", error);
+      setCreateError("寫入建立請求時發生錯誤，請稍後再試。");
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const handleCancelCreate = () => {
     setShowCreatePanel(false);
     setCreateForm(createDefaultForm());
     setCreateError(null);
+    setCreateSuccess(null);
   };
 
   return (
@@ -329,6 +438,9 @@ export function UserDirectory() {
                   }
                   className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
                 />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  系統會自動建立 Authentication 帳號並同步權限，無須手動處理 UID。
+                </p>
               </label>
               <div className="grid gap-4 md:grid-cols-2">
                 <label>
@@ -449,6 +561,9 @@ export function UserDirectory() {
               {createError && (
                 <p className="text-sm font-semibold text-red-600">{createError}</p>
               )}
+              {createSuccess && (
+                <p className="text-sm font-semibold text-emerald-600">{createSuccess}</p>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
@@ -459,9 +574,10 @@ export function UserDirectory() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm"
+                  disabled={isCreating}
+                  className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
-                  建立使用者
+                  {isCreating ? "建立中…" : "建立使用者"}
                 </button>
               </div>
             </form>
@@ -470,242 +586,274 @@ export function UserDirectory() {
       )}
 
       <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-teal-600">Users</p>
-            <h1 className="text-2xl font-semibold text-slate-900">組織帳號管理</h1>
-            <p className="text-sm text-slate-500">
-              與 BOM、庫存模組共用權限，確保操作軌跡可追蹤。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
-              disabled={!canCreateUsers}
-            >
-              匯入 CSV
-            </button>
-            <button
-              onClick={() => canCreateUsers && setShowCreatePanel(true)}
-              disabled={!canCreateUsers}
-              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
-            >
-              新增使用者
-            </button>
-          </div>
-        </div>
-
-        {sessionUser && activePersonaRole && (
-          <div className="mt-6 grid gap-4 rounded-2xl border border-slate-100 bg-slate-900/5 p-4 text-sm text-slate-700 md:grid-cols-4">
-            <label>
-              <p className="text-xs font-semibold text-slate-600">
-                操作視角（示範：{sessionUser.name}）
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-teal-600">Users</p>
+              <h1 className="text-2xl font-semibold text-slate-900">組織帳號管理</h1>
+              <p className="text-sm text-slate-500">
+                與 BOM、庫存模組共用權限，確保操作軌跡可追蹤。
               </p>
-              <select
-                value={activePersonaRole}
-                onChange={(event) => {
-                  setActivePersonaRole(event.target.value as RoleId);
-                  setActivePersonaDept("all");
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
+                disabled={!canCreateUsers}
               >
-                {personaAssignments.map((assignment) => (
-                  <option key={`${assignment.role}-${assignment.departments.join("-")}`} value={assignment.role}>
-                    {ROLE_DEFINITIONS[assignment.role].label}
-                  </option>
-                ))}
-              </select>
+                匯入 CSV
+              </button>
+              <button
+                onClick={() => {
+                  if (!canCreateUsers) return;
+                  setCreateError(null);
+                  setCreateSuccess(null);
+                  setShowCreatePanel(true);
+                }}
+                disabled={!canCreateUsers}
+                className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
+              >
+                新增使用者
+              </button>
+            </div>
+          </div>
+
+          {sessionUser && activePersonaRole && (
+            <div className="mt-6 grid gap-4 rounded-2xl border border-slate-100 bg-slate-900/5 p-4 text-sm text-slate-700 md:grid-cols-4">
+              <label>
+                <p className="text-xs font-semibold text-slate-600">
+                  操作視角（目前：{sessionUser.name}）
+                </p>
+                <select
+                  value={activePersonaRole}
+                  onChange={(event) => {
+                    setActivePersonaRole(event.target.value as RoleId);
+                    setActivePersonaDept("all");
+                  }}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                >
+                  {personaAssignments.map((assignment) => (
+                    <option
+                      key={`${assignment.role}-${assignment.departments.join("-")}`}
+                      value={assignment.role}
+                    >
+                      {ROLE_DEFINITIONS[assignment.role].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <p className="text-xs font-semibold text-slate-600">部門範圍</p>
+                <select
+                  value={effectivePersonaDept}
+                  onChange={(event) =>
+                    setActivePersonaDept(event.target.value as PersonaDeptValue)
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                >
+                  {personaDeptOptions.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept === "all"
+                        ? "全部部門"
+                        : DEPARTMENT_DEFINITIONS[dept as DepartmentId]?.label ?? dept}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="md:col-span-2">
+                <p className="text-xs font-semibold text-slate-600">權限摘要</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {personaSummary.length ? (
+                    personaSummary.map(([module, actions]) => (
+                      <span
+                        key={module}
+                        className="rounded-full bg-slate-900/10 px-3 py-1 text-xs font-semibold text-slate-700"
+                      >
+                        {MODULE_DEFINITIONS[module].label}：
+                        {actions.map((action) => ACTION_LABELS[action]).join("/")}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-400">尚未為此視角授權</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!sessionUser && !isLoading && (
+            <p className="mt-4 text-xs text-red-600">
+              目前登入帳號尚未在「使用者主檔」建立資料，暫時僅能瀏覽，無法操作權限相關功能。
+            </p>
+          )}
+
+          <form
+            onSubmit={handleSubmit}
+            className="mt-6 grid gap-4 rounded-2xl bg-slate-50/80 p-4 md:grid-cols-4"
+          >
+            <label className="md:col-span-2">
+              <p className="text-xs font-semibold text-slate-600">搜尋關鍵字</p>
+              <input
+                type="text"
+                value={formState.keyword}
+                onChange={(event) =>
+                  setFormState((prev) => ({ ...prev, keyword: event.target.value }))
+                }
+                placeholder="姓名 / 部門 / Email / 員工代碼"
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+              />
             </label>
             <label>
-              <p className="text-xs font-semibold text-slate-600">部門範圍</p>
+              <p className="text-xs font-semibold text-slate-600">角色</p>
               <select
-              value={effectivePersonaDept}
+                value={formState.role}
                 onChange={(event) =>
-                  setActivePersonaDept(event.target.value as PersonaDeptValue)
+                  setFormState((prev) => ({
+                    ...prev,
+                    role: event.target.value as RoleFilterValue,
+                  }))
                 }
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
               >
-                {personaDeptOptions.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept === "all"
-                      ? "全部部門"
-                      : DEPARTMENT_DEFINITIONS[dept as DepartmentId]?.label ?? dept}
+                {roleOptions.map((role) => (
+                  <option key={role.value} value={role.value}>
+                    {role.label}
                   </option>
                 ))}
               </select>
             </label>
-            <div className="md:col-span-2">
-              <p className="text-xs font-semibold text-slate-600">權限摘要</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {personaSummary.length ? (
-                  personaSummary.map(([module, actions]) => (
-                    <span
-                      key={module}
-                      className="rounded-full bg-slate-900/10 px-3 py-1 text-xs font-semibold text-slate-700"
-                    >
-                      {MODULE_DEFINITIONS[module].label}：
-                      {actions.map((action) => ACTION_LABELS[action]).join("/")}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-xs text-slate-400">尚未為此視角授權</span>
-                )}
-              </div>
+            <label>
+              <p className="text-xs font-semibold text-slate-600">狀態</p>
+              <select
+                value={formState.status}
+                onChange={(event) =>
+                  setFormState((prev) => ({
+                    ...prev,
+                    status: event.target.value as StatusFilterValue,
+                  }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+              >
+                {statusOptions.map((status) => (
+                  <option key={status.value} value={status.value}>
+                    {status.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-end gap-2 md:col-span-4 md:justify-end">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"
+              >
+                重置
+              </button>
+              <button
+                type="submit"
+                className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm"
+              >
+                套用搜尋
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-slate-500">
+              {isLoading
+                ? "載入中…"
+                : `已篩選 ${filteredUsers.length} 位使用者（共 ${userRecords.length} 位）`}
+            </p>
+            <div className="ml-auto flex gap-2 text-xs font-semibold">
+              {roleOptions
+                .filter((role) => role.value !== "all")
+                .map((role) => (
+                  <span
+                    key={role.value}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-slate-600"
+                  >
+                    {role.label}
+                  </span>
+                ))}
             </div>
           </div>
-        )}
 
-        <form
-          onSubmit={handleSubmit}
-          className="mt-6 grid gap-4 rounded-2xl bg-slate-50/80 p-4 md:grid-cols-4"
-        >
-          <label className="md:col-span-2">
-            <p className="text-xs font-semibold text-slate-600">搜尋關鍵字</p>
-            <input
-              type="text"
-              value={formState.keyword}
-              onChange={(event) =>
-                setFormState((prev) => ({ ...prev, keyword: event.target.value }))
-              }
-              placeholder="姓名 / 部門 / Email / 員工代碼"
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
-            />
-          </label>
-          <label>
-            <p className="text-xs font-semibold text-slate-600">角色</p>
-            <select
-              value={formState.role}
-              onChange={(event) =>
-                setFormState((prev) => ({ ...prev, role: event.target.value as RoleFilterValue }))
-              }
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
-            >
-              {roleOptions.map((role) => (
-                <option key={role.value} value={role.value}>
-                  {role.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <p className="text-xs font-semibold text-slate-600">狀態</p>
-            <select
-              value={formState.status}
-              onChange={(event) =>
-                setFormState((prev) => ({ ...prev, status: event.target.value as StatusFilterValue }))
-              }
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
-            >
-              {statusOptions.map((status) => (
-                <option key={status.value} value={status.value}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex items-end gap-2 md:col-span-4 md:justify-end">
-            <button
-              type="button"
-              onClick={handleReset}
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"
-            >
-              重置
-            </button>
-            <button
-              type="submit"
-              className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm"
-            >
-              套用搜尋
-            </button>
-          </div>
-        </form>
-      </div>
+          {loadError && (
+            <p className="mt-3 text-xs font-semibold text-red-600">{loadError}</p>
+          )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-slate-500">
-            已篩選 {filteredUsers.length} 位使用者（共 {userRecords.length} 位）
-          </p>
-          <div className="ml-auto flex gap-2 text-xs font-semibold">
-            {roleOptions
-              .filter((role) => role.value !== "all")
-              .map((role) => (
-                <span
-                  key={role.value}
-                  className="rounded-full bg-slate-100 px-3 py-1 text-slate-600"
-                >
-                  {role.label}
-                </span>
-              ))}
-          </div>
-        </div>
-
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100">
-          <table className="min-w-full divide-y divide-slate-100 text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                {["姓名", "角色/部門", "Email", "狀態", "最後登入"].map((header) => (
-                  <th
-                    key={header}
-                    className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
-                  >
-                    {header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {filteredUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-slate-50/70">
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <div className="font-semibold text-slate-900">{user.name}</div>
-                    <div className="text-xs text-slate-500">{user.id}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      {user.roles.map((assignment) => (
-                        <span
-                          key={`${user.id}-${assignment.role}-${assignment.departments.join("-")}`}
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            assignment.isPrimary
-                              ? "bg-teal-50 text-teal-700"
-                              : "bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          {ROLE_DEFINITIONS[assignment.role].label}
-                          {assignment.departments.length
-                            ? ` · ${assignment.departments
-                                .map((dept) => DEPARTMENT_DEFINITIONS[dept]?.label ?? dept)
-                                .join("/")}`
-                            : ""}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">{user.email}</td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        user.status === "active"
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-slate-100 text-slate-500"
-                      }`}
+          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-100">
+            <table className="min-w-full divide-y divide-slate-100 text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  {["姓名", "角色/部門", "Email", "狀態", "最後登入"].map((header) => (
+                    <th
+                      key={header}
+                      className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
                     >
-                      {user.status === "active" ? "使用中" : "停用"}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
-                    2025/11/18 08:30
-                  </td>
+                      {header}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-slate-50/70">
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <div className="font-semibold text-slate-900">{user.name}</div>
+                      <div className="text-xs text-slate-500">{user.id}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {user.roles.map((assignment) => (
+                          <span
+                            key={`${user.id}-${assignment.role}-${assignment.departments.join(
+                              "-",
+                            )}`}
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              assignment.isPrimary
+                                ? "bg-teal-50 text-teal-700"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {ROLE_DEFINITIONS[assignment.role].label}
+                            {assignment.departments.length
+                              ? ` · ${assignment.departments
+                                  .map(
+                                    (dept) =>
+                                      DEPARTMENT_DEFINITIONS[dept]?.label ?? dept,
+                                  )
+                                  .join("/")}`
+                              : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                      {user.email}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          user.status === "active"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {user.status === "active" ? "使用中" : "停用"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
+                      2025/11/18 08:30
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
-  </>
+    </>
   );
 }
-

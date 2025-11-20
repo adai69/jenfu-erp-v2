@@ -9,7 +9,11 @@ const navItems = [
   { label: "總覽", description: "即時 KPI 與工單負載", href: "/" },
   { label: "主檔中心", description: "Users / Parts / Sequences", href: "/master" },
   { label: "使用者主檔", description: "帳號、角色、權限", href: "/master/users" },
+  { label: "物料主檔", description: "零件 / 採購料", href: "/master/materials" },
+  { label: "物料分類", description: "零件群組 / 供 BOM 使用", href: "/master/material-categories" },
   { label: "計量單位", description: "跨模組共用單位", href: "/master/units" },
+  { label: "倉庫主檔", description: "倉別 / 預設收發", href: "/master/warehouses" },
+  { label: "付款條件", description: "供應商付款條款", href: "/master/payment-terms" },
   { label: "序號設定", description: "Prefix / Padding / 流水", href: "/master/sequences" },
   { label: "供應商主檔", description: "等級、交期、狀態", href: "/master/suppliers" },
   { label: "報價管理", description: "詢價、交期、成本估算", href: "/quotes" },
@@ -74,12 +78,6 @@ export function AppShell({ children }: AppShellProps) {
             <p className="text-xs uppercase tracking-[0.3em] text-teal-600">ERP V2</p>
             <h1 className="text-lg font-semibold text-slate-900">鉦富機械登入</h1>
           </div>
-          <Link
-            href="/login"
-            className="rounded-full border border-teal-500 px-4 py-2 text-sm font-semibold text-teal-600 hover:bg-teal-50"
-          >
-            前往登入
-          </Link>
         </header>
         <main className="flex flex-1 flex-col bg-slate-50">{children}</main>
       </div>

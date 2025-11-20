@@ -32,6 +32,22 @@ export type Supplier = {
   level: "A" | "B" | "C";
   leadTimeDays: number;
   status: "active" | "suspended";
+  email?: string;
+  address?: string;
+  taxId?: string;
+  paymentTermCode?: string;
+  note?: string;
+};
+
+export type PaymentTerm = {
+  code: string;
+  name: string;
+  category: "cash" | "net" | "monthly" | "installment";
+  status: "active" | "inactive";
+  description?: string;
+  netDays?: number;
+  monthlyOffset?: number;
+  sortOrder?: number;
 };
 
 export type Customer = {
@@ -72,5 +88,46 @@ export type Sequence = {
   padding: number;
   nextNumber: number;
   scope: "報價" | "訂單" | "製令" | "序號" | "帳號";
+};
+
+export type MaterialCategory = {
+  code: string;
+  name: string;
+  type: "part" | "purchase" | "other";
+  description?: string;
+  status: "active" | "inactive";
+  sortOrder?: number;
+};
+
+export type Material = {
+  code: string;
+  name: string;
+  spec?: string;
+  type: "PS" | "PM" | "PO";
+  categoryCode: string;
+  unitCode: string;
+  defaultWarehouseCode?: string;
+  preferredSupplierCode?: string;
+  purchaseLeadTimeDays?: number;
+  stdCost?: number;
+  currency?: string;
+  status: "active" | "inactive";
+  isStocked: boolean;
+  note?: string;
+  baseCode?: string;
+  variantNo?: string;
+  isVariant?: boolean;
+};
+
+export type Warehouse = {
+  code: string;
+  name: string;
+  type: "raw" | "wip" | "fg" | "other";
+  status: "active" | "inactive";
+  isDefaultReceive?: boolean;
+  isDefaultIssue?: boolean;
+  sortOrder?: number;
+  address?: string;
+  note?: string;
 };
 

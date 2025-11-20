@@ -25,6 +25,7 @@ const MODULE_DEFINITIONS: Record<
   orders: { label: "訂單", description: "接單與變更" },
   inventory: { label: "庫存", description: "入出庫與盤點" },
   production: { label: "產品/製令", description: "工單與製造履歷" },
+  materials: { label: "物料", description: "零件與採購料主檔" },
 };
 
 const ACTION_LABELS: Record<PermissionAction, string> = {
@@ -52,6 +53,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
     orders: ["view", "create", "update", "approve", "lock", "cancel"],
     inventory: ["view", "create", "update", "lock"],
     production: ["view", "create", "update", "approve", "lock"],
+    materials: ["view", "create", "update", "disable"],
   },
   manager: {
     users: ["view", "create", "update", "disable"],
@@ -66,6 +68,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
     orders: ["view", "create", "update", "lock"],
     inventory: ["view", "create", "update"],
     production: ["view", "create", "update"],
+    materials: ["view", "create", "update"],
   },
   planner: {
     users: ["view"],
@@ -80,6 +83,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
     orders: ["view", "create"],
     inventory: ["view", "create"],
     production: ["view", "create"],
+    materials: ["view", "create"],
   },
   operator: {
     users: ["view"],
@@ -94,6 +98,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
     orders: ["view"],
     inventory: ["view"],
     production: ["view"],
+    materials: ["view"],
   },
 };
 
@@ -160,6 +165,7 @@ function initializeEmptyProfile(): PermissionProfile {
     parts: [],
     products: [],
     categories: [],
+    materials: [],
     sequences: [],
     quotes: [],
     orders: [],
