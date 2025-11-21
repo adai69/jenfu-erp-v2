@@ -92,6 +92,7 @@ const mapMaterialDoc = (data: DocumentData, id: string): Material => ({
   note: data.note as string | undefined,
   baseCode: data.baseCode as string | undefined,
   variantNo: data.variantNo as string | undefined,
+  isVariant: data.isVariant === true || Boolean(data.variantNo),
 });
 
 const typeOptions: Array<{ label: string; value: Material["type"] }> = [
@@ -109,6 +110,7 @@ export function MaterialDirectory() {
   const [filters, setFilters] = useState<MaterialFilter>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<MaterialFilter>(defaultFilters);
   const [showPanel, setShowPanel] = useState(false);
+  const [showViewPanel, setShowViewPanel] = useState(false);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [formState, setFormState] = useState<MaterialForm>(() =>
     defaultFormState(seedCategories[0]?.code),
@@ -117,6 +119,7 @@ export function MaterialDirectory() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [useManualCode, setUseManualCode] = useState(false);
+  const [viewingMaterial, setViewingMaterial] = useState<Material | null>(null);
 
   useEffect(() => {
     const fetchReferenceData = async () => {
@@ -194,13 +197,13 @@ export function MaterialDirectory() {
   }, []);
 
   useEffect(() => {
-    if (!showPanel) return undefined;
+    if (!showPanel && !showViewPanel) return undefined;
     const original = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = original;
     };
-  }, [showPanel]);
+  }, [showPanel, showViewPanel]);
 
   const demoUser = users[0];
   const { can } = usePermission({
@@ -208,6 +211,7 @@ export function MaterialDirectory() {
     roleFilter: demoUser.primaryRole,
     departmentFilter: demoUser.departments[0],
   });
+  const canRead = can("materials", "view");
   const canCreate = can("materials", "create");
   const canUpdate = can("materials", "update");
 
@@ -275,6 +279,16 @@ export function MaterialDirectory() {
     const baseCode = material.baseCode ?? material.code;
     handleGenerateVariantCode(baseCode);
     setShowPanel(true);
+  };
+
+  const handleOpenView = (material: Material) => {
+    setViewingMaterial(material);
+    setShowViewPanel(true);
+  };
+
+  const closeViewPanel = () => {
+    setShowViewPanel(false);
+    setViewingMaterial(null);
   };
 
   const handleGenerateVariantCode = (baseCode: string) => {
@@ -463,9 +477,161 @@ export function MaterialDirectory() {
   const getUnitName = (code: string) => units.find((unit) => unit.code === code)?.name ?? code;
   const getWarehouseName = (code?: string) =>
     code ? warehouses.find((warehouse) => warehouse.code === code)?.name ?? code : "—";
+  const getSupplierName = (code?: string) =>
+    code ? suppliers.find((supplier) => supplier.code === code)?.name ?? code : "—";
+  const getTypeLabel = (type: Material["type"]) =>
+    typeOptions.find((option) => option.value === type)?.label ?? type;
 
   return (
     <div className="space-y-6">
+      {showViewPanel && viewingMaterial && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 px-4 py-8">
+          <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-teal-600">View</p>
+                <h2 className="text-xl font-semibold text-slate-900">檢視物料 {viewingMaterial.code}</h2>
+              </div>
+              <button
+                onClick={closeViewPanel}
+                className="rounded-full px-3 py-1 text-sm text-slate-500 hover:bg-slate-100"
+              >
+                關閉
+              </button>
+            </div>
+            <div className="mt-6 space-y-6">
+              <section className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  基本資料
+                </p>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">料號</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{viewingMaterial.code}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">物料型態</p>
+                    <p className="mt-1 inline-flex items-center rounded-full bg-slate-900/5 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {getTypeLabel(viewingMaterial.type)}
+                    </p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-xs font-semibold text-slate-500">品名</p>
+                    <p className="mt-1 text-base font-semibold text-slate-900">{viewingMaterial.name}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <p className="text-xs font-semibold text-slate-500">規格</p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      {viewingMaterial.spec?.trim() || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">狀態</p>
+                    <span
+                      className={`mt-1 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                        viewingMaterial.status === "active"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {viewingMaterial.status === "active" ? "使用中" : "停用"}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">庫存管控</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {viewingMaterial.isStocked ? "納入" : "不納入"}
+                    </p>
+                  </div>
+                </div>
+              </section>
+              <section className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  分類與供應
+                </p>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">分類</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {getCategoryName(viewingMaterial.categoryCode)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">計量單位</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {getUnitName(viewingMaterial.unitCode)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">預設倉庫</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {getWarehouseName(viewingMaterial.defaultWarehouseCode)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">首選供應商</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {getSupplierName(viewingMaterial.preferredSupplierCode)}
+                    </p>
+                  </div>
+                </div>
+              </section>
+              <section className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  採購資訊
+                </p>
+                <div className="mt-3 grid gap-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">採購前置天數</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {viewingMaterial.purchaseLeadTimeDays ?? "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">參考成本</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {viewingMaterial.stdCost !== undefined
+                        ? `${viewingMaterial.currency ?? "TWD"} ${viewingMaterial.stdCost}`
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">備註</p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      {viewingMaterial.note?.trim() || "—"}
+                    </p>
+                  </div>
+                </div>
+              </section>
+              <section className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  子料資訊
+                </p>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">是否為子料</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {viewingMaterial.isVariant ? "是" : "否"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">母料號</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {viewingMaterial.baseCode ?? "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">子料編號</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {viewingMaterial.variantNo ?? "—"}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
       {showPanel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-8">
           <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
@@ -870,6 +1036,14 @@ export function MaterialDirectory() {
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenView(material)}
+                        disabled={!canRead}
+                        className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40"
+                      >
+                        檢視
+                      </button>
                       <button
                         onClick={() => handleOpenEdit(material)}
                         disabled={!canUpdate}

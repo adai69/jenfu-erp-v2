@@ -1,3 +1,7 @@
+"use client";
+
+import { RequireAuth } from "@/components/auth/RequireAuth";
+
 const kpis = [
   { label: "本月接單金額", value: "NT$ 25.8M", delta: "+12% MoM" },
   { label: "毛利率", value: "38.4%", delta: "+2.1 pt" },
@@ -18,7 +22,7 @@ const timeline = [
   { time: "16:30", event: "財務預算滾動檢討", team: "管理" },
 ];
 
-export default function Home() {
+function DashboardContent() {
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -81,5 +85,13 @@ export default function Home() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <RequireAuth>
+      <DashboardContent />
+    </RequireAuth>
   );
 }
