@@ -15,7 +15,31 @@ const SERVICE_ACCOUNT = "jenfu-erp-v2@appspot.gserviceaccount.com";
 // 與前端相同的 Web API Key，用於呼叫 Firebase REST API 寄送設定密碼信。
 const WEB_API_KEY = "AIzaSyASrFuFoYfs5RyS7Edd6NJSZbkuSdGOWtY";
 const ALLOWED_ADMIN_EMAILS = ["dani@jenfu.com.tw"];
+const DEFAULT_PASSWORD = "12345678";
+
+const app = admin.apps.length ? admin.app() : admin.initializeApp();
+const firestore = app.firestore();
+const auth = app.auth();
+
 async function requesterCanCreateUsers(uid?: string, email?: string) {
+  // 1) 優先以 Auth custom claims 判斷
+  if (uid) {
+    try {
+      const userRecord = await auth.getUser(uid);
+      const claims = (userRecord.customClaims ?? {}) as {
+        modules?: Record<string, string[]>;
+      };
+      const moduleActions = claims.modules?.users ?? [];
+      if (Array.isArray(moduleActions) && moduleActions.includes("create")) {
+        return true;
+      }
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to read custom claims for requester", error);
+    }
+  }
+
+  // 2) 若 claims 不可用，再回退到 Firestore users/{uid}
   if (uid) {
     const docRef = firestore.doc(`users/${uid}`);
     const snapshot = await docRef.get();
@@ -33,17 +57,13 @@ async function requesterCanCreateUsers(uid?: string, email?: string) {
     }
   }
 
+  // 3) 最後才使用 email 白名單（僅保留種子管理者）
   if (email && ALLOWED_ADMIN_EMAILS.includes(email)) {
     return true;
   }
 
   return false;
 }
-const DEFAULT_PASSWORD = "12345678";
-
-const app = admin.apps.length ? admin.app() : admin.initializeApp();
-const firestore = app.firestore();
-const auth = app.auth();
 
 async function sendPasswordResetEmail(email: string) {
   const apiKey = WEB_API_KEY;

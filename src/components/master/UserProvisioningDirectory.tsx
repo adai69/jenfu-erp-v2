@@ -8,7 +8,7 @@ import {
   type Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebaseClient";
-import { usePermission } from "@/hooks/usePermission";
+import { useAuth } from "@/contexts/AuthContext";
 
 const stateOptions = [
   { label: "全部狀態", value: "all" as const },
@@ -100,8 +100,10 @@ const mapProvisionDoc = (doc: DocumentData, id: string): ProvisionRecord => {
 };
 
 export function UserProvisioningDirectory() {
-  const { can } = usePermission();
-  const canView = can("users", "view");
+  const { claims } = useAuth();
+  const roles = claims?.roles ?? [];
+  const isAdmin = roles.includes("admin");
+  const canView = isAdmin;
 
   const [records, setRecords] = useState<ProvisionRecord[]>([]);
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
