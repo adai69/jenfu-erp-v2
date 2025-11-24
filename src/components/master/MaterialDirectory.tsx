@@ -285,13 +285,28 @@ export function MaterialDirectory() {
     setViewingMaterial(null);
   };
 
-  const handleGenerateVariantCode = (baseCode: string) => {
-    const variants = materials.filter((m) => (m.baseCode ?? m.code) === baseCode && m.variantNo);
-    const nextNumber = variants.length
-      ? Math.max(...variants.map((m) => Number.parseInt(m.variantNo ?? "0", 10))) + 1
-      : 1;
+  const handleGenerateVariantCode = async (baseCode: string) => {
+    const variants = materials
+      .filter((m) => (m.baseCode ?? m.code) === baseCode && m.variantNo)
+      .map((m) => Number.parseInt(m.variantNo ?? "0", 10))
+      .filter((num) => !Number.isNaN(num));
+    const nextNumber = variants.length ? Math.max(...variants) + 1 : 1;
     const variantNo = nextNumber.toString().padStart(5, "0");
-    setFormState((prev) => ({ ...prev, code: `${baseCode}-${variantNo}`, baseCode, isVariant: true }));
+    const candidateCode = `${baseCode}-${variantNo}`;
+
+    const existingDoc = materials.find((material) => material.code === candidateCode);
+    if (existingDoc) {
+      setFormError("生成的子料號已存在，請稍後再試或手動調整。");
+      return;
+    }
+
+    setFormState((prev) => ({
+      ...prev,
+      code: candidateCode,
+      baseCode,
+      isVariant: true,
+      variantNo,
+    }));
   };
 
   const handleOpenEdit = (material: Material) => {
@@ -330,33 +345,33 @@ export function MaterialDirectory() {
     setFormState((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleGenerateCode = (materialType: Material["type"]) => {
+  const handleGenerateCode = async (materialType: Material["type"]) => {
     if (editingCode || useManualCode || formState.isVariant) return;
     const sequenceKey =
       materialType === "PS" ? "PART_PS" : materialType === "PM" ? "PART_PM" : "PART_PO";
     try {
-      const seq = issueSequence(sequenceKey);
+      const seq = await issueSequence(sequenceKey);
       setFormState((prev) => ({ ...prev, code: seq.value }));
     } catch {
       setFormError("取得料號時發生問題，請稍後再試。");
     }
   };
 
-  const handleTypeChange = (nextType: Material["type"]) => {
+  const handleTypeChange = async (nextType: Material["type"]) => {
     setFormState((prev) => ({ ...prev, type: nextType }));
     if (!useManualCode && !editingCode) {
-      handleGenerateCode(nextType);
+      await handleGenerateCode(nextType);
     }
   };
 
   const canUseManualCode = !editingCode && formState.type === "PS";
 
-  const handleToggleManualCode = (checked: boolean) => {
+  const handleToggleManualCode = async (checked: boolean) => {
     setUseManualCode(checked);
     if (checked) {
       setFormState((prev) => ({ ...prev, code: "PS-0000A" }));
     } else {
-      handleGenerateCode(formState.type);
+      await handleGenerateCode(formState.type);
     }
   };
 

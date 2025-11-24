@@ -1,3 +1,10 @@
+import {
+  collection,
+  doc,
+  runTransaction,
+  type Firestore,
+} from "firebase/firestore";
+import { db } from "@/lib/firebaseClient";
 import { sequences } from "@/data/masterRecords";
 
 type SequenceDefinition = (typeof sequences)[number];
@@ -32,19 +39,61 @@ export function peekSequence(key: SequenceKey) {
   };
 }
 
-export function issueSequence(key: SequenceKey) {
+type SequenceDocument = {
+  prefix: string;
+  padding: number;
+  nextNumber: number;
+};
+
+const sequenceCollection = collection(db, "sequences");
+
+export async function issueSequence(key: SequenceKey) {
   const definition = sequenceMap.get(key);
   if (!definition) {
     throw new Error(`Sequence ${key} not found`);
   }
 
-  const formatted = formatSequenceNumber(key, definition.nextNumber);
-  definition.nextNumber += 1;
+  const result = await runTransaction(db as Firestore, async (transaction) => {
+    const ref = doc(sequenceCollection, key);
+    const snapshot = await transaction.get(ref);
+
+    let payload: SequenceDocument = {
+      prefix: definition.prefix,
+      padding: definition.padding,
+      nextNumber: definition.nextNumber,
+    };
+
+    if (snapshot.exists()) {
+      const data = snapshot.data() as SequenceDocument;
+      payload = data;
+    }
+
+    const formatted = `${payload.prefix}${payload.nextNumber
+      .toString()
+      .padStart(payload.padding, "0")}`;
+
+    transaction.set(
+      ref,
+      {
+        prefix: payload.prefix,
+        padding: payload.padding,
+        nextNumber: payload.nextNumber + 1,
+      },
+      { merge: true },
+    );
+
+    return {
+      value: formatted,
+      issuedNumber: payload.nextNumber,
+    };
+  });
+
+  definition.nextNumber = result.issuedNumber + 1;
 
   return {
     key,
-    value: formatted,
-    issuedNumber: definition.nextNumber - 1,
+    value: result.value,
+    issuedNumber: result.issuedNumber,
   };
 }
 

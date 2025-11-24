@@ -8,6 +8,7 @@ import {
 } from "firebase/auth";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -100,29 +101,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const ensureUserDocument = async () => {
       try {
         const targetRef = doc(db, "users", user.uid);
-        const existing = await getDoc(targetRef);
-        if (existing.exists()) {
-          return;
+        const normalizedEmail = user.email?.toLowerCase();
+        if (!normalizedEmail) return;
+
+        const targetSnapshot = await getDoc(targetRef);
+        let claimsNeedsRefresh = false;
+
+        if (!targetSnapshot.exists()) {
+          const matchQuery = query(
+            collection(db, "users"),
+            where("email", "==", normalizedEmail),
+          );
+          const snapshot = await getDocs(matchQuery);
+          const legacyDoc = snapshot.docs[0];
+
+          if (!legacyDoc) {
+            return;
+          }
+
+          await setDoc(targetRef, legacyDoc.data(), { merge: true });
+          await deleteDoc(legacyDoc.ref);
+          claimsNeedsRefresh = true;
         }
 
-        const email = user.email;
-        if (!email) {
-          return;
-        }
-        const normalizedEmail = email.toLowerCase();
-        const matchQuery = query(
-          collection(db, "users"),
-          where("email", "==", normalizedEmail),
+        const lastLoginAt =
+          user.metadata?.lastSignInTime ?? new Date().toISOString();
+
+        await setDoc(
+          targetRef,
+          {
+            email: normalizedEmail,
+            lastLoginAt,
+          },
+          { merge: true },
         );
-        const snapshot = await getDocs(matchQuery);
-        const sourceDoc = snapshot.docs[0];
-        if (!sourceDoc) {
-          return;
-        }
 
-        await setDoc(targetRef, sourceDoc.data(), { merge: true });
-
-        if (auth.currentUser) {
+        if (claimsNeedsRefresh && auth.currentUser) {
           await loadClaims(auth.currentUser);
         }
       } catch (error) {

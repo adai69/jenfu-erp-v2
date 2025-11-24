@@ -277,7 +277,7 @@ const filteredSuppliers = useMemo(() => {
     let supplierCode = formState.code;
     if (!editingCode) {
       try {
-        const seq = issueSequence("SUPPLIER");
+        const seq = await issueSequence("SUPPLIER");
         supplierCode = seq.value;
       } catch {
         setIsSaving(false);

@@ -65,6 +65,18 @@ const moduleActionPreset: Partial<Record<PermissionModule, PermissionAction[]>> 
 const defaultModuleActions: PermissionAction[] = ["view", "create", "update"];
 const DEFAULT_PASSWORD = "12345678";
 
+const formatLastLogin = (value?: string | null) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${yyyy}/${mm}/${dd} ${hh}:${min}`;
+};
+
 type FilterState = {
   keyword: string;
   role: RoleFilterValue;
@@ -79,6 +91,8 @@ type CreateUserForm = {
   status: "active" | "inactive";
   moduleOverrides: Partial<Record<PermissionModule, PermissionAction[]>>;
 };
+
+type DirectoryUser = User & { lastLoginAt?: string | null };
 
 const createDefaultForm = (): CreateUserForm => ({
   name: "",
@@ -96,9 +110,10 @@ const defaultFilters: FilterState = {
 };
 
 export function UserDirectory() {
-  const { user: authUser } = useAuth();
+  const { user: authUser, claims } = useAuth();
 
-  const [userRecords, setUserRecords] = useState<User[]>([]);
+  const [userRecords, setUserRecords] = useState<DirectoryUser[]>([]);
+  const [uniqueUsers, setUniqueUsers] = useState<DirectoryUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [formState, setFormState] = useState<FilterState>(defaultFilters);
@@ -123,7 +138,7 @@ export function UserDirectory() {
     const fetchUsers = async () => {
       try {
         const snapshot = await getDocs(collection(db, "users"));
-        const loaded: User[] = snapshot.docs.map((userDoc) => {
+        const loaded: DirectoryUser[] = snapshot.docs.map((userDoc) => {
           const data = userDoc.data() as any;
           const roles = data.roles ?? [];
           const primaryRole: RoleId =
@@ -138,6 +153,7 @@ export function UserDirectory() {
             departments,
             status: (data.status as "active" | "inactive") ?? "active",
             moduleOverrides: data.overrides,
+            lastLoginAt: data.lastLoginAt as string | undefined,
           };
         });
 
@@ -154,11 +170,32 @@ export function UserDirectory() {
     fetchUsers();
   }, []);
 
+  useEffect(() => {
+    const deduped = userRecords.reduce<DirectoryUser[]>((acc, user) => {
+      const email = user.email?.toLowerCase();
+      if (!email) {
+        return acc;
+      }
+      const existingIndex = acc.findIndex(
+        (item) => item.email?.toLowerCase() === email,
+      );
+      if (existingIndex === -1) {
+        acc.push(user);
+        return acc;
+      }
+      if (user.id === authUser?.uid) {
+        acc[existingIndex] = user;
+      }
+      return acc;
+    }, []);
+    setUniqueUsers(deduped);
+  }, [authUser?.uid, userRecords]);
+
   const sessionUser = useMemo(() => {
     const email = authUser?.email?.toLowerCase();
     if (!email) return undefined;
-    return userRecords.find((user) => user.email.toLowerCase() === email);
-  }, [authUser, userRecords]);
+    return uniqueUsers.find((user) => user.email.toLowerCase() === email);
+  }, [authUser, uniqueUsers]);
 
   const personaAssignments = useMemo(
     () => sessionUser?.roles ?? [],
@@ -201,6 +238,7 @@ export function UserDirectory() {
     departmentFilter: effectivePersonaDept === "all" ? undefined : effectivePersonaDept,
   });
   const { can: realCan } = usePermission();
+  const claimsLoaded = Boolean(claims);
 
   const personaSummary: Array<[PermissionModule, PermissionAction[]]> = useMemo(() => {
     if (!personaProfile) return [];
@@ -212,7 +250,7 @@ export function UserDirectory() {
   const canCreateUsersReal = realCan("users", "create");
 
   const filteredUsers = useMemo(() => {
-    return userRecords.filter((user) => {
+    return uniqueUsers.filter((user) => {
       const departmentText = user.departments
         .map((dept) => DEPARTMENT_DEFINITIONS[dept]?.label ?? dept)
         .join(" ");
@@ -237,7 +275,7 @@ export function UserDirectory() {
 
       return keywordMatch && roleMatch && statusMatch;
     });
-  }, [appliedFilters, userRecords]);
+  }, [appliedFilters, uniqueUsers]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -315,7 +353,7 @@ export function UserDirectory() {
 
     let newId = "";
     try {
-      const issued = issueSequence("USER");
+      const issued = await issueSequence("USER");
       newId = issued.value;
     } catch {
       setIsCreating(false);
@@ -598,8 +636,12 @@ export function UserDirectory() {
             </div>
             <div className="flex flex-wrap gap-2">
               <button
+                onClick={() => {
+                  if (!canCreateUsersReal) return;
+                  alert("匯入 CSV 功能尚未開放，之後會在這裡提供。");
+                }}
                 className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
-                disabled={!canCreateUsersReal}
+              disabled={!canCreateUsersReal || !claimsLoaded}
               >
                 匯入 CSV
               </button>
@@ -610,7 +652,7 @@ export function UserDirectory() {
                   setCreateSuccess(null);
                   setShowCreatePanel(true);
                 }}
-                disabled={!canCreateUsersReal}
+                disabled={!canCreateUsersReal || !claimsLoaded}
                 className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
               >
                 新增使用者
@@ -846,7 +888,7 @@ export function UserDirectory() {
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
-                      2025/11/18 08:30
+                      {formatLastLogin(user.lastLoginAt)}
                     </td>
                   </tr>
                 ))}
