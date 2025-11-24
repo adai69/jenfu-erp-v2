@@ -27,8 +27,15 @@ async function requesterCanCreateUsers(uid?: string, email?: string) {
     try {
       const userRecord = await auth.getUser(uid);
       const claims = (userRecord.customClaims ?? {}) as {
+        roles?: string[];
         modules?: Record<string, string[]>;
       };
+
+      const roles = Array.isArray(claims.roles) ? claims.roles : [];
+      if (roles.includes("admin")) {
+        return true;
+      }
+
       const moduleActions = claims.modules?.users ?? [];
       if (Array.isArray(moduleActions) && moduleActions.includes("create")) {
         return true;
