@@ -9,7 +9,6 @@ import {
   suppliers as seedSuppliers,
   units as seedUnits,
   warehouses as seedWarehouses,
-  users,
 } from "@/data/masterRecords";
 import type {
   Material,
@@ -158,12 +157,7 @@ export function MaterialStyleLab() {
     };
   }, [showViewPanel]);
 
-  const demoUser = users[0];
-  const { can } = usePermission({
-    assignments: demoUser.roles,
-    roleFilter: demoUser.primaryRole,
-    departmentFilter: demoUser.departments[0],
-  });
+  const { can } = usePermission();
   const canRead = can("materials", "view");
 
   const filteredMaterials = useMemo(() => {

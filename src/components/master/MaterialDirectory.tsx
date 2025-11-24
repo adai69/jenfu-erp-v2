@@ -20,7 +20,6 @@ import {
 import type { Material, MaterialCategory, Supplier, Unit, Warehouse } from "@/types/master";
 import { issueSequence } from "@/lib/sequenceManager";
 import { usePermission } from "@/hooks/usePermission";
-import { users } from "@/data/masterRecords";
 
 type MaterialFilter = {
   keyword: string;
@@ -205,12 +204,7 @@ export function MaterialDirectory() {
     };
   }, [showPanel, showViewPanel]);
 
-  const demoUser = users[0];
-  const { can } = usePermission({
-    assignments: demoUser.roles,
-    roleFilter: demoUser.primaryRole,
-    departmentFilter: demoUser.departments[0],
-  });
+  const { can } = usePermission();
   const canRead = can("materials", "view");
   const canCreate = can("materials", "create");
   const canUpdate = can("materials", "update");

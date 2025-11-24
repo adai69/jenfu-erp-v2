@@ -13,7 +13,6 @@ import {
 import {
   paymentTerms as seedPaymentTerms,
   suppliers as seedSuppliers,
-  users,
 } from "@/data/masterRecords";
 import type { PaymentTerm } from "@/types/master";
 import { usePermission } from "@/hooks/usePermission";
@@ -105,12 +104,7 @@ export function SupplierDirectory() {
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [formState, setFormState] = useState<SupplierFormState>(() => defaultFormState);
 
-  const demoUser = users[0];
-  const { can } = usePermission({
-    assignments: demoUser.roles,
-    roleFilter: demoUser.primaryRole,
-    departmentFilter: demoUser.departments[0] ?? undefined,
-  });
+  const { can } = usePermission();
 
   const canCreate = can("suppliers", "create");
   const canUpdate = can("suppliers", "update");

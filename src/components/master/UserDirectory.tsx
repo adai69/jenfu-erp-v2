@@ -195,20 +195,21 @@ export function UserDirectory() {
     ? activePersonaDept
     : "all";
 
-  const { profile: permissionProfile, can } = usePermission({
+  const { profile: personaProfile, can: personaCan } = usePermission({
     assignments: personaAssignments,
     roleFilter: activePersonaRole,
     departmentFilter: effectivePersonaDept === "all" ? undefined : effectivePersonaDept,
   });
+  const { can: realCan } = usePermission();
 
   const personaSummary: Array<[PermissionModule, PermissionAction[]]> = useMemo(() => {
-    if (!permissionProfile) return [];
-    return (Object.entries(permissionProfile) as Array<[PermissionModule, PermissionAction[]]>).filter(
+    if (!personaProfile) return [];
+    return (Object.entries(personaProfile) as Array<[PermissionModule, PermissionAction[]]>).filter(
       ([, actions]) => actions.length > 0,
     );
-  }, [permissionProfile]);
+  }, [personaProfile]);
 
-  const canCreateUsers = can("users", "create");
+  const canCreateUsersReal = realCan("users", "create");
 
   const filteredUsers = useMemo(() => {
     return userRecords.filter((user) => {
@@ -283,7 +284,7 @@ export function UserDirectory() {
 
     if (isCreating) return;
 
-    if (!sessionUser || !canCreateUsers) {
+    if (!sessionUser || !canCreateUsersReal) {
       setCreateError("目前帳號沒有新增使用者權限");
       return;
     }
@@ -598,18 +599,18 @@ export function UserDirectory() {
             <div className="flex flex-wrap gap-2">
               <button
                 className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
-                disabled={!canCreateUsers}
+                disabled={!canCreateUsersReal}
               >
                 匯入 CSV
               </button>
               <button
                 onClick={() => {
-                  if (!canCreateUsers) return;
+                  if (!canCreateUsersReal) return;
                   setCreateError(null);
                   setCreateSuccess(null);
                   setShowCreatePanel(true);
                 }}
-                disabled={!canCreateUsers}
+                disabled={!canCreateUsersReal}
                 className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-400"
               >
                 新增使用者
