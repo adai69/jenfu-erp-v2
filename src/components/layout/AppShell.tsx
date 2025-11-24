@@ -9,6 +9,7 @@ const navItems = [
   { label: "總覽", description: "即時 KPI 與工單負載", href: "/" },
   { label: "主檔中心", description: "Users / Parts / Sequences", href: "/master" },
   { label: "使用者主檔", description: "帳號、角色、權限", href: "/master/users" },
+  { label: "帳號佇列", description: "建立紀錄 / 失敗原因", href: "/master/user-provisioning" },
   { label: "物料主檔", description: "零件 / 採購料", href: "/master/materials" },
   { label: "物料分類", description: "零件群組 / 供 BOM 使用", href: "/master/material-categories" },
   { label: "計量單位", description: "跨模組共用單位", href: "/master/units" },
