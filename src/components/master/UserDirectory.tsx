@@ -409,6 +409,7 @@ export function UserDirectory() {
       }
 
       await addDoc(collection(db, "userProvisioning"), {
+        requestedByUid: currentUser.uid,
         requestedBy: currentUser.email?.toLowerCase() ?? "",
         payload: requestPayload,
         state: "pending",

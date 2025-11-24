@@ -1,6 +1,11 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 import { syncUserClaims } from "./syncUserClaims";
+import {
+  buildPermissionProfile,
+  type PermissionModule,
+  type UserRoleAssignment,
+} from "./permissions";
 
 // Node 20 Runtime 內建 fetch，這裡宣告最簡單型別避免 TypeScript 編譯錯誤。
 // 不額外引入 node-fetch 依賴，以降低維護成本。
@@ -10,6 +15,30 @@ const SERVICE_ACCOUNT = "jenfu-erp-v2@appspot.gserviceaccount.com";
 // 與前端相同的 Web API Key，用於呼叫 Firebase REST API 寄送設定密碼信。
 const WEB_API_KEY = "AIzaSyASrFuFoYfs5RyS7Edd6NJSZbkuSdGOWtY";
 const ALLOWED_ADMIN_EMAILS = ["dani@jenfu.com.tw"];
+async function requesterCanCreateUsers(uid?: string, email?: string) {
+  if (uid) {
+    const docRef = firestore.doc(`users/${uid}`);
+    const snapshot = await docRef.get();
+    if (snapshot.exists) {
+      const userData = snapshot.data() as {
+        roles?: UserRoleAssignment[];
+        overrides?: Partial<Record<PermissionModule, string[]>>;
+      };
+      const assignments = userData.roles ?? [];
+      const profile = buildPermissionProfile(assignments);
+      const actions = profile.users ?? [];
+      if (actions.includes("create")) {
+        return true;
+      }
+    }
+  }
+
+  if (email && ALLOWED_ADMIN_EMAILS.includes(email)) {
+    return true;
+  }
+
+  return false;
+}
 const DEFAULT_PASSWORD = "12345678";
 
 const app = admin.apps.length ? admin.app() : admin.initializeApp();
@@ -74,6 +103,7 @@ export const onUserProvisionRequest = functions
   .onCreate(async (snapshot) => {
     const data = snapshot.data() as {
       requestedBy?: string;
+      requestedByUid?: string;
       payload: {
         id: string;
         name: string;
@@ -87,7 +117,9 @@ export const onUserProvisionRequest = functions
     };
 
     const requesterEmail = (data.requestedBy ?? "").toLowerCase();
-    if (!ALLOWED_ADMIN_EMAILS.includes(requesterEmail)) {
+    const requesterUid = typeof data.requestedByUid === "string" ? data.requestedByUid : undefined;
+    const isAllowed = await requesterCanCreateUsers(requesterUid, requesterEmail);
+    if (!isAllowed) {
       await snapshot.ref.update({
         state: "rejected",
         error: "permission-denied",
