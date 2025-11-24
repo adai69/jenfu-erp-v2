@@ -7,6 +7,15 @@ import {
   type User,
 } from "firebase/auth";
 import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  where,
+} from "firebase/firestore";
+import {
   createContext,
   useCallback,
   useContext,
@@ -14,7 +23,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { auth } from "@/lib/firebaseClient";
+import { auth, db } from "@/lib/firebaseClient";
 import type {
   DepartmentId,
   PermissionAction,
@@ -43,29 +52,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [claims, setClaims] = useState<PermissionClaims | null>(null);
 
+  const loadClaims = useCallback(async (currentUser: User) => {
+    const token = await currentUser.getIdTokenResult(true);
+    const rawRoles = token.claims.roles;
+    const rawDepartments = token.claims.departments;
+    const rawModules = token.claims.modules;
+
+    setClaims({
+      roles: Array.isArray(rawRoles) ? (rawRoles as RoleId[]) : undefined,
+      departments: Array.isArray(rawDepartments)
+        ? (rawDepartments as DepartmentId[])
+        : undefined,
+      modules:
+        rawModules && typeof rawModules === "object"
+          ? (rawModules as Partial<Record<PermissionModule, PermissionAction[]>>)
+          : undefined,
+    });
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
 
       if (currentUser) {
         try {
-          const token = await currentUser.getIdTokenResult(true);
-          const rawRoles = token.claims.roles;
-          const rawDepartments = token.claims.departments;
-          const rawModules = token.claims.modules;
-
-          setClaims({
-            roles: Array.isArray(rawRoles) ? (rawRoles as RoleId[]) : undefined,
-            departments: Array.isArray(rawDepartments)
-              ? (rawDepartments as DepartmentId[])
-              : undefined,
-            modules:
-              rawModules && typeof rawModules === "object"
-                ? (rawModules as Partial<
-                    Record<PermissionModule, PermissionAction[]>
-                  >)
-                : undefined,
-          });
+          await loadClaims(currentUser);
         } catch (error) {
           // eslint-disable-next-line no-console
           console.error("Failed to load user claims", error);
@@ -79,7 +90,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [loadClaims]);
+
+  useEffect(() => {
+    if (!user?.uid || !user.email) {
+      return;
+    }
+
+    const ensureUserDocument = async () => {
+      try {
+        const targetRef = doc(db, "users", user.uid);
+        const existing = await getDoc(targetRef);
+        if (existing.exists()) {
+          return;
+        }
+
+        const email = user.email;
+        if (!email) {
+          return;
+        }
+        const normalizedEmail = email.toLowerCase();
+        const matchQuery = query(
+          collection(db, "users"),
+          where("email", "==", normalizedEmail),
+        );
+        const snapshot = await getDocs(matchQuery);
+        const sourceDoc = snapshot.docs[0];
+        if (!sourceDoc) {
+          return;
+        }
+
+        await setDoc(targetRef, sourceDoc.data(), { merge: true });
+
+        if (auth.currentUser) {
+          await loadClaims(auth.currentUser);
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to ensure user document exists", error);
+      }
+    };
+
+    ensureUserDocument();
+  }, [loadClaims, user?.email, user?.uid]);
 
   const login = useCallback(async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
