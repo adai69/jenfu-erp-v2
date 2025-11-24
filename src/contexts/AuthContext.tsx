@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (currentUser) {
         try {
-          const token = await currentUser.getIdTokenResult();
+          const token = await currentUser.getIdTokenResult(true);
           const rawRoles = token.claims.roles;
           const rawDepartments = token.claims.departments;
           const rawModules = token.claims.modules;
