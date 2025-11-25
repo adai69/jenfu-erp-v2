@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   collection,
@@ -8,8 +9,12 @@ import {
   serverTimestamp,
   setDoc,
   type DocumentData,
+  query,
+  where,
 } from "firebase/firestore";
-import { db } from "@/lib/firebaseClient";
+import { getDownloadURL, ref as storageRef } from "firebase/storage";
+import { auth, db, storage } from "@/lib/firebaseClient";
+import { uploadFilesForEntity } from "@/lib/fileCenterService";
 import {
   materialCategories as seedCategories,
   materials as seedMaterials,
@@ -18,6 +23,7 @@ import {
   warehouses as seedWarehouses,
 } from "@/data/masterRecords";
 import type { Material, MaterialCategory, Supplier, Unit, Warehouse } from "@/types/master";
+import type { FileRecordWithURL } from "@/types/fileCenter";
 import { issueSequence } from "@/lib/sequenceManager";
 import { usePermission } from "@/hooks/usePermission";
 
@@ -53,6 +59,12 @@ const defaultFilters: MaterialFilter = {
   category: "all",
   status: "all",
 };
+
+const parseTagInput = (value: string) =>
+  value
+    .split(/[,\s]+/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
 
 const defaultFormState = (categoryCode?: string, baseCode?: string): MaterialForm => ({
   code: "",
@@ -119,6 +131,27 @@ export function MaterialDirectory() {
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [useManualCode, setUseManualCode] = useState(false);
   const [viewingMaterial, setViewingMaterial] = useState<Material | null>(null);
+  const [materialFiles, setMaterialFiles] = useState<FileRecordWithURL[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [filesRefreshToken, setFilesRefreshToken] = useState(0);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [materialUploadForm, setMaterialUploadForm] = useState({
+    title: "",
+    description: "",
+    tags: "",
+    isPrimary: false,
+  });
+  const [materialUploadFiles, setMaterialUploadFiles] = useState<FileList | null>(null);
+  const [materialUploadError, setMaterialUploadError] = useState<string | null>(null);
+  const [materialUploadSuccess, setMaterialUploadSuccess] = useState<string | null>(null);
+  const [isMaterialUploading, setIsMaterialUploading] = useState(false);
+
+  const { can } = usePermission();
+  const canRead = can("materials", "view");
+  const canCreate = can("materials", "create");
+  const canUpdate = can("materials", "update");
+  const canViewFiles = can("files", "view");
+  const canCreateFiles = can("files", "create");
 
   useEffect(() => {
     const fetchReferenceData = async () => {
@@ -204,10 +237,82 @@ export function MaterialDirectory() {
     };
   }, [showPanel, showViewPanel]);
 
-  const { can } = usePermission();
-  const canRead = can("materials", "view");
-  const canCreate = can("materials", "create");
-  const canUpdate = can("materials", "update");
+  useEffect(() => {
+    if (!showViewPanel || !viewingMaterial || !canViewFiles) {
+      setMaterialFiles([]);
+      return;
+    }
+    let isMounted = true;
+    const loadFiles = async () => {
+      setIsLoadingFiles(true);
+      try {
+        const fileQuery = query(
+          collection(db, "files"),
+          where("targetModule", "==", "materials"),
+          where("entityId", "==", viewingMaterial.code),
+        );
+        const snapshot = await getDocs(fileQuery);
+        const items: FileRecordWithURL[] = [];
+        for (const docSnapshot of snapshot.docs) {
+          const data = docSnapshot.data();
+          if (data.deletedAt) continue;
+          const mimeType =
+            typeof data.mimeType === "string" ? data.mimeType : "application/octet-stream";
+          const record: FileRecordWithURL = {
+            id: docSnapshot.id,
+            targetModule: "materials",
+            entityId: data.entityId ?? viewingMaterial.code,
+            storagePath: data.storagePath ?? "",
+            fileName: data.fileName ?? docSnapshot.id,
+            mimeType,
+            size: typeof data.size === "number" ? data.size : undefined,
+            title: data.title ?? undefined,
+            description: data.description ?? undefined,
+            tags: Array.isArray(data.tags) ? data.tags : [],
+            isPrimary: data.isPrimary === true,
+            orderIndex: typeof data.orderIndex === "number" ? data.orderIndex : undefined,
+            createdAt: data.createdAt,
+            createdByUid: data.createdByUid ?? undefined,
+            createdByName: data.createdByName ?? undefined,
+            deletedAt: undefined,
+          };
+          if (record.storagePath && mimeType.startsWith("image/")) {
+            try {
+              record.downloadURL = await getDownloadURL(storageRef(storage, record.storagePath));
+            } catch (imageError) {
+              // eslint-disable-next-line no-console
+              console.warn("Failed to load material preview", imageError);
+            }
+          }
+          items.push(record);
+        }
+        items.sort((a, b) => {
+          if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+          const aOrder = a.orderIndex ?? a.createdAt?.toDate().getTime() ?? 0;
+          const bOrder = b.orderIndex ?? b.createdAt?.toDate().getTime() ?? 0;
+          return bOrder - aOrder;
+        });
+        if (isMounted) {
+          setMaterialFiles(items);
+        }
+      } catch (filesError) {
+        // eslint-disable-next-line no-console
+        console.error("Failed to load material files", filesError);
+        if (isMounted) {
+          setMaterialFiles([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingFiles(false);
+        }
+      }
+    };
+    loadFiles();
+    return () => {
+      isMounted = false;
+    };
+  }, [showViewPanel, viewingMaterial, canViewFiles, filesRefreshToken]);
+
 
   const filteredMaterials = useMemo(() => {
     return materials.filter((material) => {
@@ -283,6 +388,7 @@ export function MaterialDirectory() {
   const closeViewPanel = () => {
     setShowViewPanel(false);
     setViewingMaterial(null);
+    setMaterialFiles([]);
   };
 
   const handleGenerateVariantCode = async (baseCode: string) => {
@@ -339,7 +445,73 @@ export function MaterialDirectory() {
     setFormError(null);
     setEditingCode(null);
     setUseManualCode(false);
+    setShowUploadModal(false);
+    setMaterialUploadFiles(null);
+    setMaterialUploadError(null);
+    setMaterialUploadSuccess(null);
   };
+  const handleOpenMaterialUpload = () => {
+    setMaterialUploadForm({
+      title: "",
+      description: "",
+      tags: "",
+      isPrimary: false,
+    });
+    setMaterialUploadFiles(null);
+    setMaterialUploadError(null);
+    setMaterialUploadSuccess(null);
+    setShowUploadModal(true);
+  };
+
+  const handleMaterialUploadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingCode) {
+      setMaterialUploadError("請先儲存此物料後再上傳檔案。");
+      return;
+    }
+    if (!materialUploadFiles || materialUploadFiles.length === 0) {
+      setMaterialUploadError("請選擇至少一個檔案");
+      return;
+    }
+
+    setIsMaterialUploading(true);
+    setMaterialUploadError(null);
+    try {
+      await uploadFilesForEntity({
+        module: "materials",
+        entityId: editingCode,
+        files: Array.from(materialUploadFiles),
+        metadata: {
+          title: materialUploadForm.title,
+          description: materialUploadForm.description,
+          tags: parseTagInput(materialUploadForm.tags),
+          setPrimary: materialUploadForm.isPrimary,
+        },
+        createdBy: {
+          uid: auth.currentUser?.uid ?? null,
+          name: auth.currentUser?.email ?? auth.currentUser?.displayName ?? "system",
+        },
+      });
+      setMaterialUploadSuccess("已完成檔案上傳");
+      setMaterialUploadFiles(null);
+      setMaterialUploadForm((prev) => ({ ...prev, isPrimary: false }));
+      setFilesRefreshToken((prev) => prev + 1);
+    } catch (uploadError) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to upload material files", uploadError);
+      setMaterialUploadError("上傳失敗，請稍後再試。");
+    } finally {
+      setIsMaterialUploading(false);
+    }
+  };
+
+  const closeMaterialUploadModal = () => {
+    setShowUploadModal(false);
+    setMaterialUploadFiles(null);
+    setMaterialUploadError(null);
+    setMaterialUploadSuccess(null);
+  };
+
 
   const handleFormChange = <K extends keyof MaterialForm>(key: K, value: MaterialForm[K]) => {
     setFormState((prev) => ({ ...prev, [key]: value }));
@@ -490,6 +662,8 @@ export function MaterialDirectory() {
     code ? suppliers.find((supplier) => supplier.code === code)?.name ?? code : "—";
   const getTypeLabel = (type: Material["type"]) =>
     typeOptions.find((option) => option.value === type)?.label ?? type;
+  const primaryMaterialFile = materialFiles.find((file) => file.isPrimary);
+  const secondaryMaterialFiles = materialFiles.filter((file) => !file.isPrimary);
 
   return (
     <div className="space-y-6">
@@ -637,6 +811,81 @@ export function MaterialDirectory() {
                   </div>
                 </div>
               </section>
+              {canViewFiles && (
+                <section className="rounded-2xl border border-slate-100 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        檔案 / 圖片
+                      </p>
+                      <p className="text-sm text-slate-500">與此料號關聯的附件與照片</p>
+                    </div>
+                    <Link
+                      href={`/master/files?module=materials&entityId=${encodeURIComponent(viewingMaterial.code)}`}
+                      className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-teal-500 hover:text-teal-600"
+                    >
+                      開啟檔案中心
+                    </Link>
+                  </div>
+                  {isLoadingFiles ? (
+                    <p className="mt-3 text-sm text-slate-500">檔案載入中…</p>
+                  ) : materialFiles.length ? (
+                    <div className="mt-4 space-y-4">
+                      {primaryMaterialFile && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500">主照片</p>
+                          {primaryMaterialFile.downloadURL ? (
+                            <img
+                              src={primaryMaterialFile.downloadURL}
+                              alt={primaryMaterialFile.fileName}
+                              className="mt-2 max-h-64 w-full rounded-2xl object-contain"
+                            />
+                          ) : (
+                            <div className="mt-2 flex h-48 items-center justify-center rounded-2xl bg-slate-50 text-sm text-slate-500">
+                              無法預覽此檔案
+                            </div>
+                          )}
+                          <p className="mt-2 text-sm font-semibold text-slate-900">
+                            {primaryMaterialFile.title ?? primaryMaterialFile.fileName}
+                          </p>
+                          <p className="text-xs text-slate-500">{primaryMaterialFile.mimeType}</p>
+                        </div>
+                      )}
+                      {secondaryMaterialFiles.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500">其他附件</p>
+                          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                            {secondaryMaterialFiles.map((file) => (
+                              <div
+                                key={file.id}
+                                className="rounded-2xl border border-slate-100 p-3 text-sm text-slate-600"
+                              >
+                                {file.downloadURL && file.mimeType.startsWith("image/") ? (
+                                  <img
+                                    src={file.downloadURL}
+                                    alt={file.fileName}
+                                    className="h-40 w-full rounded-xl object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-40 items-center justify-center rounded-xl bg-slate-50 text-xs text-slate-500">
+                                    無法預覽
+                                  </div>
+                                )}
+                                <p className="mt-2 text-sm font-semibold text-slate-900">
+                                  {file.title ?? file.fileName}
+                                </p>
+                                <p className="text-xs text-slate-500">{file.mimeType}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-slate-500">尚未上傳任何檔案。</p>
+                  )}
+                </section>
+              )}
             </div>
           </div>
         </div>
@@ -644,7 +893,7 @@ export function MaterialDirectory() {
       {showPanel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-8">
           <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-teal-600">
                   {editingCode ? "Edit" : "Create"}
@@ -653,12 +902,23 @@ export function MaterialDirectory() {
                   {editingCode ? `編輯物料 ${formState.code}` : "新增物料"}
                 </h2>
               </div>
+            <div className="flex items-center gap-2">
+              {editingCode && canCreateFiles && (
+                <button
+                  type="button"
+                  onClick={handleOpenMaterialUpload}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-sm font-semibold text-slate-700 hover:border-teal-500 hover:text-teal-600"
+                >
+                  上傳檔案
+                </button>
+              )}
               <button
                 onClick={closePanel}
                 className="rounded-full px-3 py-1 text-sm text-slate-500 hover:bg-slate-100"
               >
                 關閉
               </button>
+            </div>
             </div>
             <form onSubmit={handleSave} className="mt-4 space-y-4">
               <div>
@@ -871,6 +1131,113 @@ export function MaterialDirectory() {
                   className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
                 >
                   {isSaving ? "儲存中…" : editingCode ? "更新物料" : "建立物料"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {showUploadModal && editingCode && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 px-4 py-8">
+          <div className="w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-teal-600">Upload</p>
+                <h2 className="text-xl font-semibold text-slate-900">為 {editingCode} 上傳檔案</h2>
+                <p className="text-sm text-slate-500">檔案會自動歸檔至檔案中心 · 物料模組</p>
+              </div>
+              <button
+                onClick={closeMaterialUploadModal}
+                className="rounded-full px-3 py-1 text-sm text-slate-500 hover:bg-slate-100"
+              >
+                關閉
+              </button>
+            </div>
+            <form onSubmit={handleMaterialUploadSubmit} className="mt-4 space-y-4">
+              <label className="block text-sm font-semibold text-slate-600">
+                主檔編號
+                <input
+                  type="text"
+                  value={editingCode}
+                  readOnly
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-600">
+                檔案標題（選填）
+                <input
+                  type="text"
+                  value={materialUploadForm.title}
+                  onChange={(event) =>
+                    setMaterialUploadForm((prev) => ({ ...prev, title: event.target.value }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-600">
+                說明（選填）
+                <textarea
+                  value={materialUploadForm.description}
+                  onChange={(event) =>
+                    setMaterialUploadForm((prev) => ({ ...prev, description: event.target.value }))
+                  }
+                  rows={3}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                  placeholder="輸入簡短說明以利辨識"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-600">
+                標籤（以逗號或空白分隔）
+                <input
+                  type="text"
+                  value={materialUploadForm.tags}
+                  onChange={(event) =>
+                    setMaterialUploadForm((prev) => ({ ...prev, tags: event.target.value }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={materialUploadForm.isPrimary}
+                  onChange={(event) =>
+                    setMaterialUploadForm((prev) => ({ ...prev, isPrimary: event.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                />
+                將第一個檔案設為主照片
+              </label>
+              <label className="block text-sm font-semibold text-slate-600">
+                選擇檔案
+                <input
+                  type="file"
+                  multiple
+                  onChange={(event) => setMaterialUploadFiles(event.target.files)}
+                  className="mt-1 w-full text-sm"
+                />
+                <p className="text-xs text-slate-400">支援多檔同時上傳，建議單檔不超過 10MB。</p>
+              </label>
+              {materialUploadError && (
+                <p className="text-sm font-semibold text-red-600">{materialUploadError}</p>
+              )}
+              {materialUploadSuccess && (
+                <p className="text-sm font-semibold text-emerald-600">{materialUploadSuccess}</p>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeMaterialUploadModal}
+                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={isMaterialUploading}
+                  className="rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+                >
+                  {isMaterialUploading ? "上傳中…" : "開始上傳"}
                 </button>
               </div>
             </form>

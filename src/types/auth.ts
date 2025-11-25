@@ -48,6 +48,7 @@ export type PermissionModule =
   | "products"
   | "categories"
   | "materials"
+  | "files"
   | "sequences"
   | "quotes"
   | "orders"

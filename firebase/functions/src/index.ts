@@ -14,7 +14,11 @@ declare function fetch(input: string, init?: unknown): Promise<any>;
 const SERVICE_ACCOUNT = "jenfu-erp-v2@appspot.gserviceaccount.com";
 // 與前端相同的 Web API Key，用於呼叫 Firebase REST API 寄送設定密碼信。
 const WEB_API_KEY = "AIzaSyASrFuFoYfs5RyS7Edd6NJSZbkuSdGOWtY";
-const ALLOWED_ADMIN_EMAILS = ["dani@jenfu.com.tw"];
+// 種子管理者白名單：僅作為最後保護網，避免部署期間無法建帳號。
+const ALLOWED_ADMIN_EMAILS = [
+  "dani@jenfu.com.tw",
+  "adai.chang@gmail.com",
+];
 const DEFAULT_PASSWORD = "12345678";
 
 const app = admin.apps.length ? admin.app() : admin.initializeApp();
@@ -22,10 +26,22 @@ const firestore = app.firestore();
 const auth = app.auth();
 
 async function requesterCanCreateUsers(uid?: string, email?: string) {
-  // 1) 優先以 Auth custom claims 判斷
-  if (uid) {
+  let resolvedUid = uid;
+
+  if (!resolvedUid && email) {
     try {
-      const userRecord = await auth.getUser(uid);
+      const userRecord = await auth.getUserByEmail(email);
+      resolvedUid = userRecord.uid;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to resolve uid via email", email, error);
+    }
+  }
+
+  // 1) 優先以 Auth custom claims 判斷
+  if (resolvedUid) {
+    try {
+      const userRecord = await auth.getUser(resolvedUid);
       const claims = (userRecord.customClaims ?? {}) as {
         roles?: string[];
         modules?: Record<string, string[]>;
@@ -47,8 +63,8 @@ async function requesterCanCreateUsers(uid?: string, email?: string) {
   }
 
   // 2) 若 claims 不可用，再回退到 Firestore users/{uid}
-  if (uid) {
-    const docRef = firestore.doc(`users/${uid}`);
+  if (resolvedUid) {
+    const docRef = firestore.doc(`users/${resolvedUid}`);
     const snapshot = await docRef.get();
     if (snapshot.exists) {
       const userData = snapshot.data() as {

@@ -15,6 +15,7 @@ export type PermissionModule =
   | "parts"
   | "products"
   | "categories"
+  | "files"
   | "materials"
   | "sequences"
   | "quotes"
@@ -49,6 +50,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
     parts: ["view", "create", "update", "disable", "approve"],
     products: ["view", "create", "update", "disable", "approve"],
     categories: ["view", "create", "update", "disable", "approve"],
+    files: ["view", "create", "update", "disable"],
     materials: ["view", "create", "update", "disable"],
     sequences: ["view", "lock", "sequence-adjust", "approve"],
     quotes: ["view", "create", "update", "approve", "lock", "cancel"],
@@ -64,6 +66,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
     parts: ["view", "create", "update", "disable"],
     products: ["view", "create", "update"],
     categories: ["view", "create", "update"],
+    files: ["view", "create", "update"],
     materials: ["view", "create", "update"],
     sequences: ["view", "lock"],
     quotes: ["view", "create", "update", "lock"],
@@ -79,6 +82,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
     parts: ["view", "create"],
     products: ["view", "create"],
     categories: ["view", "create"],
+    files: ["view", "create"],
     materials: ["view", "create"],
     sequences: ["view"],
     quotes: ["view", "create"],
@@ -94,6 +98,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
     parts: ["view"],
     products: ["view"],
     categories: ["view"],
+    files: ["view"],
     materials: ["view"],
     sequences: ["view"],
     quotes: ["view"],
@@ -112,6 +117,7 @@ function defaultProfile(overrides: Partial<PermissionProfile>): PermissionProfil
     parts: [],
     products: [],
     categories: [],
+    files: [],
     materials: [],
     sequences: [],
     quotes: [],

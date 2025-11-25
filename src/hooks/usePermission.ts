@@ -21,6 +21,15 @@ export function usePermission(params?: UsePermissionParams) {
 
   const usingAssignments = Boolean(assignments && assignments.length);
 
+  const fallbackAssignments = useMemo<UserRoleAssignment[]>(() => {
+    if (!claims?.roles?.length) return [];
+    const departments = claims.departments ?? [];
+    return claims.roles.map((role) => ({
+      role,
+      departments,
+    }));
+  }, [claims?.departments, claims?.roles]);
+
   const profile = useMemo(() => {
     if (usingAssignments && assignments) {
       return buildPermissionProfile(assignments, { roleFilter, departmentFilter });
@@ -28,21 +37,10 @@ export function usePermission(params?: UsePermissionParams) {
 
     const modules = claims?.modules;
     if (modules) {
-      const profileFromClaims: Record<PermissionModule, PermissionAction[]> = {
-        users: [],
-        units: [],
-        suppliers: [],
-        customers: [],
-        parts: [],
-        products: [],
-        categories: [],
-        materials: [],
-        sequences: [],
-        quotes: [],
-        orders: [],
-        inventory: [],
-        production: [],
-      };
+      const profileFromClaims = buildPermissionProfile(fallbackAssignments, {
+        roleFilter,
+        departmentFilter,
+      }) as Record<PermissionModule, PermissionAction[]>;
 
       (Object.keys(profileFromClaims) as PermissionModule[]).forEach((module) => {
         const actions = modules[module];
@@ -54,15 +52,26 @@ export function usePermission(params?: UsePermissionParams) {
       return profileFromClaims;
     }
 
+    if (fallbackAssignments.length) {
+      return buildPermissionProfile(fallbackAssignments, { roleFilter, departmentFilter });
+    }
+
     return null;
-  }, [assignments, claims?.modules, departmentFilter, roleFilter, usingAssignments]);
+  }, [
+    assignments,
+    claims?.modules,
+    departmentFilter,
+    fallbackAssignments,
+    roleFilter,
+    usingAssignments,
+  ]);
 
   const can = (module: PermissionModule, action: PermissionAction) => {
     if (usingAssignments && assignments) {
       return canPerformAction(assignments, module, action, { roleFilter, departmentFilter });
     }
 
-    const moduleActions = claims?.modules?.[module];
+    const moduleActions = profile?.[module];
     return Array.isArray(moduleActions) ? moduleActions.includes(action) : false;
   };
 
