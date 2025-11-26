@@ -14,6 +14,7 @@ const MODULE_DEFINITIONS: Record<
   { label: string; description: string }
 > = {
   users: { label: "使用者", description: "帳號與權限" },
+  employees: { label: "員工", description: "人事資料卡" },
   units: { label: "計量單位", description: "跨模組基本單位" },
   suppliers: { label: "供應商", description: "採購夥伴" },
   customers: { label: "客戶", description: "營銷對象" },
@@ -43,6 +44,7 @@ const ACTION_LABELS: Record<PermissionAction, string> = {
 const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
   admin: {
     users: ["view", "create", "update", "disable", "approve"],
+    employees: ["view", "create", "update", "disable"],
     units: ["view", "create", "update", "disable", "approve"],
     suppliers: ["view", "create", "update", "disable", "approve"],
     customers: ["view", "create", "update", "disable", "approve"],
@@ -59,6 +61,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
   },
   manager: {
     users: ["view", "create", "update", "disable"],
+    employees: ["view", "create", "update"],
     units: ["view", "create", "update", "disable"],
     suppliers: ["view", "create", "update"],
     customers: ["view", "create", "update"],
@@ -75,6 +78,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
   },
   planner: {
     users: ["view"],
+    employees: ["view", "create"],
     units: ["view", "create"],
     suppliers: ["view", "create"],
     customers: ["view", "create"],
@@ -91,6 +95,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
   },
   operator: {
     users: ["view"],
+    employees: ["view"],
     units: ["view"],
     suppliers: ["view"],
     customers: ["view"],
@@ -164,6 +169,7 @@ export function getHighestRole(assignments: UserRoleAssignment[]): RoleId | null
 function initializeEmptyProfile(): PermissionProfile {
   return {
     users: [],
+    employees: [],
     units: [],
     suppliers: [],
     customers: [],

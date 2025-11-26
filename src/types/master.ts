@@ -6,6 +6,21 @@ import type {
   UserRoleAssignment,
 } from "@/types/auth";
 
+export type EmployeeStatus = "active" | "inactive" | "on-leave";
+
+export type Employee = {
+  code: string;
+  name: string;
+  departments: DepartmentId[];
+  title?: string;
+  status: EmployeeStatus;
+  email?: string;
+  phone?: string;
+  hireDate?: string;
+  leaveDate?: string;
+  note?: string;
+};
+
 export type User = {
   id: string;
   name: string;
@@ -87,7 +102,7 @@ export type Sequence = {
   prefix: string;
   padding: number;
   nextNumber: number;
-  scope: "報價" | "訂單" | "製令" | "序號" | "帳號";
+  scope: "報價" | "訂單" | "製令" | "序號" | "帳號" | "員工";
 };
 
 export type MaterialCategory = {

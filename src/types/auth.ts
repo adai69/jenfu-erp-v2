@@ -41,6 +41,7 @@ export type UserRoleAssignment = {
 
 export type PermissionModule =
   | "users"
+  | "employees"
   | "units"
   | "suppliers"
   | "customers"

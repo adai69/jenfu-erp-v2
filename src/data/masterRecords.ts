@@ -1,6 +1,7 @@
 import type {
   Category,
   Customer,
+  Employee,
   Material,
   MaterialCategory,
   PaymentTerm,
@@ -66,6 +67,29 @@ export const users: User[] = [
     departments: ["production"],
     email: "worker.vn@cfm.com",
     status: "active",
+  },
+];
+
+export const employees: Employee[] = [
+  {
+    code: "JFS0001",
+    name: "張仕杰",
+    title: "總經理",
+    departments: ["executive", "management"],
+    status: "active",
+    email: "ceo@cfm.com",
+    phone: "02-1234-0001",
+    hireDate: "2010-01-15",
+  },
+  {
+    code: "JFS0002",
+    name: "張成漢",
+    title: "營運經理",
+    departments: ["production", "sales"],
+    status: "active",
+    email: "operation@cfm.com",
+    phone: "02-1234-0002",
+    hireDate: "2012-04-01",
   },
 ];
 
@@ -210,8 +234,10 @@ export const sequences: Sequence[] = [
   { key: "ORDER", prefix: "SO", padding: 5, nextNumber: 3021, scope: "訂單" },
   { key: "WO", prefix: "WO", padding: 5, nextNumber: 873, scope: "製令" },
   { key: "SERIAL", prefix: "CFM", padding: 6, nextNumber: 54219, scope: "序號" },
-  // 使用者帳號：JFS + 4 碼流水號，例如 JFS0001、JFS0002 ...
-  { key: "USER", prefix: "JFS", padding: 4, nextNumber: 1, scope: "帳號" },
+  // 使用者帳號：UA + 4 碼流水號，例如 UA0001、UA0002 ...
+  { key: "USER", prefix: "UA", padding: 4, nextNumber: 2, scope: "帳號" },
+  // 員工編號：JFS + 4 碼流水號
+  { key: "EMPLOYEE", prefix: "JFS", padding: 4, nextNumber: 16, scope: "員工" },
   { key: "PART_PS", prefix: "PS-", padding: 5, nextNumber: 1, scope: "帳號" },
   { key: "PART_PM", prefix: "PM-", padding: 5, nextNumber: 1, scope: "帳號" },
   { key: "PART_PO", prefix: "PO-", padding: 5, nextNumber: 1, scope: "帳號" },

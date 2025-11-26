@@ -1,6 +1,7 @@
 import {
   categories,
   customers,
+  employees,
   parts,
   products,
   sequences,
@@ -23,6 +24,20 @@ const masterSets = [
       u.roles.map((assignment) => ROLE_DEFINITIONS[assignment.role].label).join(" / "),
       u.departments.map((dept) => DEPARTMENT_DEFINITIONS[dept]?.label ?? dept).join(" / "),
       u.status,
+    ]),
+  },
+  {
+    key: "employees",
+    title: "員工 Employees",
+    description: "人事資料卡、部門與狀態",
+    total: employees.length,
+    updated: "11/18 09:05",
+    headers: ["編號", "姓名", "部門", "狀態"],
+    rows: employees.map((e) => [
+      e.code,
+      e.name,
+      e.departments.map((dept) => DEPARTMENT_DEFINITIONS[dept]?.label ?? dept).join(" / "),
+      e.status === "active" ? "在職" : e.status === "on-leave" ? "留停" : "離職",
     ]),
   },
   {
@@ -96,7 +111,8 @@ const masterSets = [
 ];
 
 const summary = [
-  { label: "核心主檔", value: "8", note: "本階段完整定義" },
+  { label: "核心主檔", value: "9", note: "本階段完整定義" },
+  { label: "員工人數", value: `${employees.length}`, note: "JFS 編號" },
   { label: "角色/單位", value: `${users.length}+${units.length}`, note: "跨模組共用" },
   { label: "供應/客戶", value: `${suppliers.length}/${customers.length}`, note: "採購/營銷" },
   { label: "品號/零件", value: `${products.length}+${parts.length}`, note: "BOM 基礎" },

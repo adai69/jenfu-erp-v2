@@ -145,6 +145,7 @@ export function MaterialDirectory() {
   const [materialUploadError, setMaterialUploadError] = useState<string | null>(null);
   const [materialUploadSuccess, setMaterialUploadSuccess] = useState<string | null>(null);
   const [isMaterialUploading, setIsMaterialUploading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FileRecordWithURL | null>(null);
 
   const { can } = usePermission();
   const canRead = can("materials", "view");
@@ -834,12 +835,18 @@ export function MaterialDirectory() {
                       {primaryMaterialFile && (
                         <div>
                           <p className="text-xs font-semibold text-slate-500">主照片</p>
-                          {primaryMaterialFile.downloadURL ? (
-                            <img
-                              src={primaryMaterialFile.downloadURL}
-                              alt={primaryMaterialFile.fileName}
-                              className="mt-2 max-h-64 w-full rounded-2xl object-contain"
-                            />
+                      {primaryMaterialFile.downloadURL ? (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewFile(primaryMaterialFile)}
+                              className="mt-2 block"
+                            >
+                              <img
+                                src={primaryMaterialFile.downloadURL}
+                                alt={primaryMaterialFile.fileName}
+                                className="max-h-64 w-full rounded-2xl object-contain cursor-zoom-in shadow-sm transition hover:shadow-lg"
+                              />
+                            </button>
                           ) : (
                             <div className="mt-2 flex h-48 items-center justify-center rounded-2xl bg-slate-50 text-sm text-slate-500">
                               無法預覽此檔案
@@ -861,11 +868,17 @@ export function MaterialDirectory() {
                                 className="rounded-2xl border border-slate-100 p-3 text-sm text-slate-600"
                               >
                                 {file.downloadURL && file.mimeType.startsWith("image/") ? (
-                                  <img
-                                    src={file.downloadURL}
-                                    alt={file.fileName}
-                                    className="h-40 w-full rounded-xl object-cover"
-                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewFile(file)}
+                                    className="block"
+                                  >
+                                    <img
+                                      src={file.downloadURL}
+                                      alt={file.fileName}
+                                      className="h-40 w-full rounded-xl object-cover cursor-zoom-in shadow-sm transition hover:shadow-lg"
+                                    />
+                                  </button>
                                 ) : (
                                   <div className="flex h-40 items-center justify-center rounded-xl bg-slate-50 text-xs text-slate-500">
                                     無法預覽
@@ -885,6 +898,46 @@ export function MaterialDirectory() {
                     <p className="mt-3 text-sm text-slate-500">尚未上傳任何檔案。</p>
                   )}
                 </section>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {previewFile && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 px-4 py-8">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-teal-600">Preview</p>
+                <h2 className="text-xl font-semibold text-slate-900">
+                  {previewFile.title ?? previewFile.fileName}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  {previewFile.mimeType}
+                  {previewFile.size
+                    ? ` · ${(previewFile.size / 1024).toFixed(1)} KB`
+                    : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewFile(null)}
+                className="rounded-full px-3 py-1 text-sm text-slate-500 hover:bg-slate-100"
+              >
+                關閉
+              </button>
+            </div>
+            <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              {previewFile.downloadURL && previewFile.mimeType.startsWith("image/") ? (
+                <img
+                  src={previewFile.downloadURL}
+                  alt={previewFile.fileName}
+                  className="max-h-[70vh] w-full rounded-xl object-contain"
+                />
+              ) : (
+                <div className="flex h-64 items-center justify-center rounded-xl bg-slate-100 text-sm text-slate-500">
+                  無法預覽此檔案，請至檔案中心下載檢視。
+                </div>
               )}
             </div>
           </div>

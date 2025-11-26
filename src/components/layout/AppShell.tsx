@@ -5,29 +5,47 @@ import { ReactNode, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 
-const navItems = [
-  { label: "總覽", description: "即時 KPI 與工單負載", href: "/" },
-  { label: "主檔中心", description: "Users / Parts / Sequences", href: "/master" },
-  { label: "使用者主檔", description: "帳號、角色、權限", href: "/master/users" },
-  { label: "帳號佇列", description: "建立紀錄 / 失敗原因", href: "/master/user-provisioning" },
-  { label: "檔案中心", description: "設計圖 / 附件索引", href: "/master/files" },
-  { label: "物料主檔", description: "零件 / 採購料", href: "/master/materials" },
-  { label: "物料分類", description: "零件群組 / 供 BOM 使用", href: "/master/material-categories" },
-  { label: "計量單位", description: "跨模組共用單位", href: "/master/units" },
-  { label: "倉庫主檔", description: "倉別 / 預設收發", href: "/master/warehouses" },
-  { label: "付款條件", description: "供應商付款條款", href: "/master/payment-terms" },
-  { label: "序號設定", description: "Prefix / Padding / 流水", href: "/master/sequences" },
-  { label: "供應商主檔", description: "等級、交期、狀態", href: "/master/suppliers" },
-  { label: "報價管理", description: "詢價、交期、成本估算", href: "/quotes" },
-  { label: "訂單管理", description: "接單、排程、出貨", href: "/orders" },
-  { label: "庫存控管", description: "零件、原物料、批次", href: "/inventory" },
-  { label: "產品/模組", description: "BOM、序號、版本", href: "/products" },
-  { label: "供應協同", description: "供應商、採購、付款", href: "/suppliers" },
+type NavItem = {
+  label: string;
+  description: string;
+  href: string;
+};
+
+const navSections: Array<{ title: string; items: NavItem[] }> = [
+  {
+    title: "首頁 / 總覽",
+    items: [
+      { label: "總覽", description: "即時 KPI 與工單負載", href: "/" },
+      { label: "主檔中心", description: "Users / Parts / Sequences", href: "/master" },
+    ],
+  },
+  {
+    title: "主檔維護",
+    items: [
+      { label: "員工主檔", description: "人員資料卡 / 編號", href: "/master/employees" },
+      { label: "物料主檔", description: "零件 / 採購料", href: "/master/materials" },
+      { label: "供應商主檔", description: "等級、交期、狀態", href: "/master/suppliers" },
+      { label: "倉庫主檔", description: "倉別 / 預設收發", href: "/master/warehouses" },
+      { label: "付款條件", description: "供應商付款條款", href: "/master/payment-terms" },
+      { label: "物料分類", description: "零件群組 / 供 BOM 使用", href: "/master/material-categories" },
+      { label: "計量單位", description: "跨模組共用單位", href: "/master/units" },
+      { label: "序號設定", description: "Prefix / Padding / 流水", href: "/master/sequences" },
+      { label: "檔案中心", description: "設計圖 / 附件索引", href: "/master/files" },
+    ],
+  },
+  {
+    title: "帳號與權限",
+    items: [
+      { label: "使用者主檔", description: "帳號、角色、權限", href: "/master/users" },
+      { label: "帳號佇列", description: "建立紀錄 / 失敗原因", href: "/master/user-provisioning" },
+    ],
+  },
 ];
 
+const allNavItems: NavItem[] = navSections.flatMap((section) => section.items);
 const COMMON_NAV_COUNT = 5;
-const commonNavItems = navItems.slice(0, COMMON_NAV_COUNT);
-const extraNavItems = navItems.slice(COMMON_NAV_COUNT);
+const commonNavItems = allNavItems.slice(0, COMMON_NAV_COUNT);
+const extraNavItems = allNavItems.slice(COMMON_NAV_COUNT);
 const navChipClass =
   "whitespace-nowrap rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-teal-500 hover:bg-teal-50 hover:text-teal-700";
 
@@ -97,16 +115,25 @@ export function AppShell({ children }: AppShellProps) {
           <p className="text-sm text-slate-500">物理預處理 · 油水分離設備</p>
         </div>
 
-        <nav className="space-y-4">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="block rounded-xl border border-slate-100 px-4 py-3 transition hover:border-teal-500 hover:bg-teal-50"
-            >
-              <p className="text-sm font-medium text-slate-900">{item.label}</p>
-              <p className="text-xs text-slate-500">{item.description}</p>
-            </Link>
+        <nav className="space-y-6">
+          {navSections.map((section) => (
+            <div key={section.title}>
+              <p className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {section.title}
+              </p>
+              <div className="mt-2 space-y-1">
+                {section.items.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="block rounded-xl border border-slate-100 px-4 py-3 transition hover:border-teal-500 hover:bg-teal-50"
+                  >
+                    <p className="text-sm font-medium text-slate-900">{item.label}</p>
+                    <p className="text-xs text-slate-500">{item.description}</p>
+                  </Link>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
