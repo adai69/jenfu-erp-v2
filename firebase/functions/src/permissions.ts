@@ -9,6 +9,7 @@ export type DepartmentId =
 
 export type PermissionModule =
   | "users"
+  | "purchaseMethods"
   | "units"
   | "suppliers"
   | "customers"
@@ -44,6 +45,7 @@ type PermissionProfile = Record<PermissionModule, PermissionAction[]>;
 const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
   admin: defaultProfile({
     users: ["view", "create", "update", "disable", "approve"],
+    purchaseMethods: ["view", "create", "update", "disable"],
     units: ["view", "create", "update", "disable", "approve"],
     suppliers: ["view", "create", "update", "disable", "approve"],
     customers: ["view", "create", "update", "disable", "approve"],
@@ -60,6 +62,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
   }),
   manager: defaultProfile({
     users: ["view", "create", "update", "disable"],
+    purchaseMethods: ["view", "create", "update"],
     units: ["view", "create", "update", "disable"],
     suppliers: ["view", "create", "update"],
     customers: ["view", "create", "update"],
@@ -76,6 +79,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
   }),
   planner: defaultProfile({
     users: ["view"],
+    purchaseMethods: ["view", "create"],
     units: ["view", "create"],
     suppliers: ["view", "create"],
     customers: ["view", "create"],
@@ -92,6 +96,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
   }),
   operator: defaultProfile({
     users: ["view"],
+    purchaseMethods: ["view"],
     units: ["view"],
     suppliers: ["view"],
     customers: ["view"],
@@ -111,6 +116,7 @@ const ROLE_PERMISSION_MATRIX: Record<RoleId, PermissionProfile> = {
 function defaultProfile(overrides: Partial<PermissionProfile>): PermissionProfile {
   const base: PermissionProfile = {
     users: [],
+    purchaseMethods: [],
     units: [],
     suppliers: [],
     customers: [],

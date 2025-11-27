@@ -66,7 +66,7 @@ const MODULE_FILTER_OPTIONS = [
 ];
 
 const DEFAULT_FILTERS: FilterState = {
-  module: "materials",
+  module: "all",
   entityId: "",
   keyword: "",
 };
@@ -158,6 +158,9 @@ export function FileCenter() {
   useEffect(() => {
     if (!canView) return;
 
+    let isActive = true;
+    const currentSelectedId = selectedFile?.id ?? null;
+
     const fetchFiles = async () => {
       setIsLoading(true);
       setError(null);
@@ -172,6 +175,8 @@ export function FileCenter() {
         constraints.push(limit(MAX_FETCH_LIMIT));
 
         const snapshot = await getDocs(query(collection(db, "files"), ...constraints));
+        if (!isActive) return;
+
         const items: FileRecordWithURL[] = [];
         for (const docSnapshot of snapshot.docs) {
           const data = docSnapshot.data();
@@ -224,26 +229,31 @@ export function FileCenter() {
           return bOrder - aOrder;
         });
 
+        if (!isActive) return;
+
         setFiles(filtered);
-        if (selectedFile) {
-          const updated = filtered.find((item) => item.id === selectedFile.id);
-          if (updated) {
-            setSelectedFile(updated);
-          } else {
-            setSelectedFile(null);
-          }
+        if (currentSelectedId) {
+          const updated = filtered.find((item) => item.id === currentSelectedId) ?? null;
+          setSelectedFile(updated);
         }
       } catch (fetchError) {
+        if (!isActive) return;
         // eslint-disable-next-line no-console
         console.error("Failed to load files", fetchError);
         setError("讀取檔案中心資料時發生錯誤，請稍後再試。");
       } finally {
-        setIsLoading(false);
+        if (isActive) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchFiles();
-  }, [appliedFilters, refreshToken, canView, selectedFile]);
+
+    return () => {
+      isActive = false;
+    };
+  }, [appliedFilters, refreshToken, canView, selectedFile?.id]);
 
   useEffect(() => {
     if (!selectedFile) return;

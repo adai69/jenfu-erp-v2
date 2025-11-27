@@ -24,7 +24,10 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { label: "員工主檔", description: "人員資料卡 / 編號", href: "/master/employees" },
       { label: "物料主檔", description: "零件 / 採購料", href: "/master/materials" },
+      { label: "品牌主檔", description: "品牌 / 製造商資訊", href: "/master/brands" },
+      { label: "採購方式", description: "一般 / 委外 / 寄售流程", href: "/master/purchase-methods" },
       { label: "供應商主檔", description: "等級、交期、狀態", href: "/master/suppliers" },
+      { label: "國家主檔", description: "國別 / 幣別 / 國碼", href: "/master/countries" },
       { label: "倉庫主檔", description: "倉別 / 預設收發", href: "/master/warehouses" },
       { label: "付款條件", description: "供應商付款條款", href: "/master/payment-terms" },
       { label: "物料分類", description: "零件群組 / 供 BOM 使用", href: "/master/material-categories" },
@@ -85,7 +88,6 @@ export function AppShell({ children }: AppShellProps) {
     try {
       await logout();
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error("logout failed", error);
     }
   };

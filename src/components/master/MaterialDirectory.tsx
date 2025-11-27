@@ -18,11 +18,21 @@ import { uploadFilesForEntity } from "@/lib/fileCenterService";
 import {
   materialCategories as seedCategories,
   materials as seedMaterials,
+  brands as seedBrands,
+  purchaseMethods as seedPurchaseMethods,
   suppliers as seedSuppliers,
   units as seedUnits,
   warehouses as seedWarehouses,
 } from "@/data/masterRecords";
-import type { Material, MaterialCategory, Supplier, Unit, Warehouse } from "@/types/master";
+import type {
+  Brand,
+  Material,
+  MaterialCategory,
+  PurchaseMethod,
+  Supplier,
+  Unit,
+  Warehouse,
+} from "@/types/master";
 import type { FileRecordWithURL } from "@/types/fileCenter";
 import { issueSequence } from "@/lib/sequenceManager";
 import { usePermission } from "@/hooks/usePermission";
@@ -38,17 +48,22 @@ type MaterialForm = {
   code: string;
   name: string;
   spec: string;
+  model: string;
+  brandCode: string;
   type: "PS" | "PM" | "PO";
   categoryCode: string;
   unitCode: string;
   defaultWarehouseCode: string;
   preferredSupplierCode: string;
+  purchaseMethodCode: string;
   purchaseLeadTimeDays: string;
   stdCost: string;
   currency: string;
   status: "active" | "inactive";
   isStocked: boolean;
+  description: string;
   note: string;
+  searchKeywords: string;
   baseCode?: string;
   isVariant?: boolean;
 };
@@ -70,41 +85,62 @@ const defaultFormState = (categoryCode?: string, baseCode?: string): MaterialFor
   code: "",
   name: "",
   spec: "",
+  model: "",
+  brandCode: "",
   type: "PS",
   categoryCode: categoryCode ?? seedCategories[0]?.code ?? "",
   unitCode: seedUnits[0]?.code ?? "",
   defaultWarehouseCode: "",
   preferredSupplierCode: "",
+  purchaseMethodCode: "",
   purchaseLeadTimeDays: "",
   stdCost: "",
   currency: "TWD",
   status: "active",
   isStocked: true,
+  description: "",
   note: "",
+  searchKeywords: "",
   baseCode,
   isVariant: Boolean(baseCode),
 });
 
-const mapMaterialDoc = (data: DocumentData, id: string): Material => ({
-  code: (data.code as string) ?? id,
-  name: (data.name as string) ?? "",
-  spec: data.spec as string | undefined,
-  type: (data.type as Material["type"]) ?? "PS",
-  categoryCode: (data.categoryCode as string) ?? "",
-  unitCode: (data.unitCode as string) ?? "",
-  defaultWarehouseCode: data.defaultWarehouseCode as string | undefined,
-  preferredSupplierCode: data.preferredSupplierCode as string | undefined,
-  purchaseLeadTimeDays:
-    typeof data.purchaseLeadTimeDays === "number" ? data.purchaseLeadTimeDays : undefined,
-  stdCost: typeof data.stdCost === "number" ? data.stdCost : undefined,
-  currency: data.currency as string | undefined,
-  status: (data.status as Material["status"]) ?? "active",
-  isStocked: Boolean(data.isStocked),
-  note: data.note as string | undefined,
-  baseCode: data.baseCode as string | undefined,
-  variantNo: data.variantNo as string | undefined,
-  isVariant: data.isVariant === true || Boolean(data.variantNo),
-});
+const mapMaterialDoc = (data: DocumentData, id: string): Material => {
+  const legacyBrandName = (data.brand as string) ?? undefined;
+  const legacyBrandCode =
+    legacyBrandName &&
+    seedBrands.find((brand) => brand.name === legacyBrandName)?.code;
+  return {
+    code: (data.code as string) ?? id,
+    name: (data.name as string) ?? "",
+    spec: data.spec as string | undefined,
+    model: data.model as string | undefined,
+    brandCode: (data.brandCode as string) ?? legacyBrandCode ?? undefined,
+    type: (data.type as Material["type"]) ?? "PS",
+    categoryCode: (data.categoryCode as string) ?? "",
+    unitCode: (data.unitCode as string) ?? "",
+    defaultWarehouseCode: data.defaultWarehouseCode as string | undefined,
+    preferredSupplierCode: data.preferredSupplierCode as string | undefined,
+    purchaseMethodCode: data.purchaseMethodCode as string | undefined,
+    purchaseLeadTimeDays:
+      typeof data.purchaseLeadTimeDays === "number" ? data.purchaseLeadTimeDays : undefined,
+    stdCost: typeof data.stdCost === "number" ? data.stdCost : undefined,
+    currency: data.currency as string | undefined,
+    status: (data.status as Material["status"]) ?? "active",
+    isStocked: Boolean(data.isStocked),
+    description: data.description as string | undefined,
+    note: data.note as string | undefined,
+    searchKeywords: Array.isArray(data.searchKeywords)
+      ? (data.searchKeywords as string[])
+      : undefined,
+    baseCode: data.baseCode as string | undefined,
+    variantNo: data.variantNo as string | undefined,
+    isVariant: data.isVariant === true || Boolean(data.variantNo),
+    createdByUserId: data.createdByUserId as string | undefined,
+    createdByEmployeeCode: data.createdByEmployeeCode as string | undefined,
+    createdByName: data.createdByName as string | undefined,
+  };
+};
 
 const typeOptions: Array<{ label: string; value: Material["type"] }> = [
   { label: "標準 (PS)", value: "PS" },
@@ -118,6 +154,8 @@ export function MaterialDirectory() {
   const [units, setUnits] = useState<Unit[]>(seedUnits);
   const [warehouses, setWarehouses] = useState<Warehouse[]>(seedWarehouses);
   const [suppliers, setSuppliers] = useState<Supplier[]>(seedSuppliers);
+  const [purchaseMethods, setPurchaseMethods] = useState<PurchaseMethod[]>(seedPurchaseMethods);
+  const [brands, setBrands] = useState<Brand[]>(seedBrands);
   const [filters, setFilters] = useState<MaterialFilter>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<MaterialFilter>(defaultFilters);
   const [showPanel, setShowPanel] = useState(false);
@@ -157,11 +195,20 @@ export function MaterialDirectory() {
   useEffect(() => {
     const fetchReferenceData = async () => {
       try {
-        const [categorySnap, unitSnap, warehouseSnap, supplierSnap] = await Promise.all([
+        const [
+          categorySnap,
+          unitSnap,
+          warehouseSnap,
+          supplierSnap,
+          purchaseMethodSnap,
+          brandSnap,
+        ] = await Promise.all([
           getDocs(collection(db, "materialCategories")),
           getDocs(collection(db, "units")),
           getDocs(collection(db, "warehouses")),
           getDocs(collection(db, "suppliers")),
+          getDocs(collection(db, "purchaseMethods")),
+          getDocs(collection(db, "brands")),
         ]);
 
         const mappedCategories =
@@ -199,8 +246,34 @@ export function MaterialDirectory() {
               }))
             : seedSuppliers;
         setSuppliers(mappedSuppliers);
+
+        const mappedPurchaseMethods =
+          purchaseMethodSnap.docs.length > 0
+            ? purchaseMethodSnap.docs.map((docSnapshot) => {
+                const data = docSnapshot.data() as PurchaseMethod;
+                return {
+                  ...data,
+                  code: data.code ?? docSnapshot.id,
+                  status: data.status ?? "active",
+                  category: data.category ?? "general",
+                };
+              })
+            : seedPurchaseMethods;
+        setPurchaseMethods(mappedPurchaseMethods);
+
+        const mappedBrands =
+          brandSnap.docs.length > 0
+            ? brandSnap.docs.map((docSnapshot) => {
+                const data = docSnapshot.data() as Brand;
+                return {
+                  ...data,
+                  code: data.code ?? docSnapshot.id,
+                  status: data.status ?? "active",
+                };
+              })
+            : seedBrands;
+        setBrands(mappedBrands);
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.error("Failed to load reference data for materials", error);
       }
     };
@@ -222,7 +295,6 @@ export function MaterialDirectory() {
           });
         }
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.error("Failed to load materials", error);
       }
     };
@@ -281,7 +353,6 @@ export function MaterialDirectory() {
             try {
               record.downloadURL = await getDownloadURL(storageRef(storage, record.storagePath));
             } catch (imageError) {
-              // eslint-disable-next-line no-console
               console.warn("Failed to load material preview", imageError);
             }
           }
@@ -297,7 +368,6 @@ export function MaterialDirectory() {
           setMaterialFiles(items);
         }
       } catch (filesError) {
-        // eslint-disable-next-line no-console
         console.error("Failed to load material files", filesError);
         if (isMounted) {
           setMaterialFiles([]);
@@ -315,11 +385,40 @@ export function MaterialDirectory() {
   }, [showViewPanel, viewingMaterial, canViewFiles, filesRefreshToken]);
 
 
+  const purchaseMethodMap = useMemo(
+    () => new Map(purchaseMethods.map((method) => [method.code, method.name])),
+    [purchaseMethods],
+  );
+
+  const activePurchaseMethods = useMemo(
+    () => purchaseMethods.filter((method) => method.status === "active"),
+    [purchaseMethods],
+  );
+
+  const brandMap = useMemo(() => new Map(brands.map((brand) => [brand.code, brand])), [brands]);
+
+  const activeBrands = useMemo(
+    () => brands.filter((brand) => brand.status === "active"),
+    [brands],
+  );
+
   const filteredMaterials = useMemo(() => {
     return materials.filter((material) => {
       const keyword = appliedFilters.keyword.trim().toLowerCase();
+      const brandName = material.brandCode
+        ? brandMap.get(material.brandCode)?.name ?? material.brandCode
+        : "";
       const keywordMatch = keyword
-        ? [material.code, material.name, material.spec ?? ""]
+        ? [
+            material.code,
+            material.name,
+            material.spec ?? "",
+            material.model ?? "",
+            brandName,
+            material.description ?? "",
+            material.searchKeywords?.join(" ") ?? "",
+            material.purchaseMethodCode ?? "",
+          ]
             .join(" ")
             .toLowerCase()
             .includes(keyword)
@@ -332,7 +431,7 @@ export function MaterialDirectory() {
         appliedFilters.status === "all" ? true : material.status === appliedFilters.status;
       return keywordMatch && typeMatch && categoryMatch && statusMatch;
     });
-  }, [appliedFilters, materials]);
+  }, [appliedFilters, materials, brandMap]);
 
   const handleFilterSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -361,18 +460,23 @@ export function MaterialDirectory() {
       code: material.code,
       name: `${material.name} 子料`,
       spec: material.spec ?? "",
+      model: material.model ?? "",
+      brandCode: material.brandCode ?? "",
       type: "PM",
       categoryCode: material.categoryCode,
       unitCode: material.unitCode,
       defaultWarehouseCode: material.defaultWarehouseCode ?? "",
       preferredSupplierCode: material.preferredSupplierCode ?? "",
+      purchaseMethodCode: material.purchaseMethodCode ?? "",
       purchaseLeadTimeDays:
         material.purchaseLeadTimeDays !== undefined ? material.purchaseLeadTimeDays.toString() : "",
       stdCost: material.stdCost !== undefined ? material.stdCost.toString() : "",
       currency: material.currency ?? "TWD",
       status: "active",
       isStocked: false,
+      description: material.description ?? "",
       note: "",
+      searchKeywords: material.searchKeywords?.join(" ") ?? "",
       baseCode: material.baseCode ?? material.code,
       isVariant: true,
     });
@@ -423,18 +527,23 @@ export function MaterialDirectory() {
       code: material.code,
       name: material.name,
       spec: material.spec ?? "",
+      model: material.model ?? "",
+      brandCode: material.brandCode ?? "",
       type: material.type,
       categoryCode: material.categoryCode,
       unitCode: material.unitCode,
       defaultWarehouseCode: material.defaultWarehouseCode ?? "",
       preferredSupplierCode: material.preferredSupplierCode ?? "",
+      purchaseMethodCode: material.purchaseMethodCode ?? "",
       purchaseLeadTimeDays:
         material.purchaseLeadTimeDays !== undefined ? material.purchaseLeadTimeDays.toString() : "",
       stdCost: material.stdCost !== undefined ? material.stdCost.toString() : "",
       currency: material.currency ?? "TWD",
       status: material.status,
       isStocked: material.isStocked,
+      description: material.description ?? "",
       note: material.note ?? "",
+      searchKeywords: material.searchKeywords?.join(" ") ?? "",
     });
     setFormError(null);
     setShowPanel(true);
@@ -498,7 +607,6 @@ export function MaterialDirectory() {
       setMaterialUploadForm((prev) => ({ ...prev, isPrimary: false }));
       setFilesRefreshToken((prev) => prev + 1);
     } catch (uploadError) {
-      // eslint-disable-next-line no-console
       console.error("Failed to upload material files", uploadError);
       setMaterialUploadError("上傳失敗，請稍後再試。");
     } finally {
@@ -584,25 +692,38 @@ export function MaterialDirectory() {
       setFormError("參考成本需為數字");
       return;
     }
+    const trimmedModel = formState.model.trim();
+    const trimmedBrandCode = formState.brandCode.trim();
+    const trimmedDescription = formState.description.trim();
+    const purchaseMethodCode = formState.purchaseMethodCode.trim();
+    const keywordList = parseTagInput(formState.searchKeywords);
 
     setIsSaving(true);
     setFormError(null);
+
+    const currentUser = auth.currentUser;
+    const createdByName = currentUser?.displayName ?? currentUser?.email ?? "system";
 
     const payload = {
       code: trimmedCode,
       name: trimmedName,
       spec: formState.spec.trim(),
+      model: trimmedModel || null,
+      brandCode: trimmedBrandCode || null,
       type: formState.type,
       categoryCode: formState.categoryCode,
       unitCode: formState.unitCode,
       defaultWarehouseCode: formState.defaultWarehouseCode || null,
       preferredSupplierCode: formState.preferredSupplierCode || null,
+      purchaseMethodCode: purchaseMethodCode || null,
       purchaseLeadTimeDays: leadTime ?? null,
       stdCost: stdCost ?? null,
       currency: formState.currency.trim() || "TWD",
       status: formState.status,
       isStocked: formState.isStocked,
+      description: trimmedDescription || null,
       note: formState.note.trim(),
+      searchKeywords: keywordList,
       baseCode:
         formState.isVariant && formState.baseCode
           ? formState.baseCode
@@ -615,7 +736,13 @@ export function MaterialDirectory() {
           : null,
       isVariant: formState.isVariant ?? false,
       updatedAt: serverTimestamp(),
-      ...(editingCode ? {} : { createdAt: serverTimestamp() }),
+      ...(editingCode
+        ? {}
+        : {
+            createdAt: serverTimestamp(),
+            createdByUserId: currentUser?.uid ?? null,
+            createdByName,
+          }),
     };
 
     try {
@@ -626,27 +753,37 @@ export function MaterialDirectory() {
           code: trimmedCode,
           name: trimmedName,
           spec: formState.spec.trim() || undefined,
+          model: trimmedModel || undefined,
+          brandCode: trimmedBrandCode || undefined,
           type: formState.type,
           categoryCode: formState.categoryCode,
           unitCode: formState.unitCode,
           defaultWarehouseCode: formState.defaultWarehouseCode || undefined,
           preferredSupplierCode: formState.preferredSupplierCode || undefined,
+          purchaseMethodCode: purchaseMethodCode || undefined,
           purchaseLeadTimeDays: leadTime,
           stdCost,
           currency: payload.currency,
           status: formState.status,
           isStocked: formState.isStocked,
+          description: trimmedDescription || undefined,
           note: formState.note.trim() || undefined,
+          searchKeywords: keywordList.length ? keywordList : undefined,
           baseCode: payload.baseCode ?? undefined,
           variantNo: payload.variantNo ?? undefined,
           isVariant: payload.isVariant ?? false,
+          createdByName: editingCode
+            ? prev.find((item) => item.code === trimmedCode)?.createdByName
+            : createdByName,
+          createdByUserId: editingCode
+            ? prev.find((item) => item.code === trimmedCode)?.createdByUserId
+            : currentUser?.uid ?? undefined,
         });
         return next;
       });
       setFormSuccess(editingCode ? `已更新 ${trimmedCode}` : `已新增 ${trimmedCode}`);
       closePanel();
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error("Failed to save material", error);
       setFormError("儲存物料時發生錯誤，請稍後再試。");
     } finally {
@@ -661,10 +798,25 @@ export function MaterialDirectory() {
     code ? warehouses.find((warehouse) => warehouse.code === code)?.name ?? code : "—";
   const getSupplierName = (code?: string) =>
     code ? suppliers.find((supplier) => supplier.code === code)?.name ?? code : "—";
+  const getPurchaseMethodName = (code?: string) =>
+    code ? purchaseMethodMap.get(code) ?? code : "—";
   const getTypeLabel = (type: Material["type"]) =>
     typeOptions.find((option) => option.value === type)?.label ?? type;
+  const getBrandLabel = (code?: string) => {
+    if (!code) return "—";
+    const brand = brandMap.get(code);
+    if (!brand) return code;
+    return brand.code ? `${brand.name} (${brand.code})` : brand.name;
+  };
   const primaryMaterialFile = materialFiles.find((file) => file.isPrimary);
   const secondaryMaterialFiles = materialFiles.filter((file) => !file.isPrimary);
+  const editingMaterial = editingCode
+    ? materials.find((material) => material.code === editingCode)
+    : null;
+  const loggedInUser = auth.currentUser;
+  const creatorDisplayName = editingMaterial
+    ? editingMaterial.createdByName ?? "未記錄"
+    : loggedInUser?.displayName ?? loggedInUser?.email ?? "儲存後自動記錄";
 
   return (
     <div className="space-y-6">
@@ -707,6 +859,18 @@ export function MaterialDirectory() {
                     <p className="text-xs font-semibold text-slate-500">規格</p>
                     <p className="mt-1 text-sm text-slate-700">
                       {viewingMaterial.spec?.trim() || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">型號</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {viewingMaterial.model || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">品牌</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {getBrandLabel(viewingMaterial.brandCode)}
                     </p>
                   </div>
                   <div>
@@ -758,6 +922,12 @@ export function MaterialDirectory() {
                       {getSupplierName(viewingMaterial.preferredSupplierCode)}
                     </p>
                   </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">採購方式</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {getPurchaseMethodName(viewingMaterial.purchaseMethodCode)}
+                    </p>
+                  </div>
                 </div>
               </section>
               <section className="rounded-2xl border border-slate-100 p-4">
@@ -789,6 +959,36 @@ export function MaterialDirectory() {
               </section>
               <section className="rounded-2xl border border-slate-100 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  說明與關鍵字
+                </p>
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">說明 / 附件備註</p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      {viewingMaterial.description?.trim() || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">檢索用關鍵字</p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {viewingMaterial.searchKeywords?.length ? (
+                        viewingMaterial.searchKeywords.map((tag) => (
+                          <span
+                            key={`${viewingMaterial.code}-${tag}`}
+                            className="rounded-full bg-slate-900/5 px-3 py-1 text-xs font-semibold text-slate-600"
+                          >
+                            {tag}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-slate-500">—</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </section>
+              <section className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
                   子料資訊
                 </p>
                 <div className="mt-3 grid gap-4 md:grid-cols-2">
@@ -808,6 +1008,25 @@ export function MaterialDirectory() {
                     <p className="text-xs font-semibold text-slate-500">子料編號</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {viewingMaterial.variantNo ?? "—"}
+                    </p>
+                  </div>
+                </div>
+              </section>
+              <section className="rounded-2xl border border-slate-100 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  系統資訊
+                </p>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">建碼人</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                      {viewingMaterial.createdByName || "未記錄"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500">建碼 UID</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {viewingMaterial.createdByUserId || "—"}
                     </p>
                   </div>
                 </div>
@@ -1037,6 +1256,34 @@ export function MaterialDirectory() {
               </label>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block text-sm font-semibold text-slate-600">
+                  型號
+                  <input
+                    type="text"
+                    value={formState.model}
+                    onChange={(event) => handleFormChange("model", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                    placeholder="例：BS-3X5"
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-slate-600">
+                  品牌
+                  <select
+                    value={formState.brandCode}
+                    onChange={(event) => handleFormChange("brandCode", event.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                  >
+                    <option value="">（未指定）</option>
+                    {activeBrands.map((brand) => (
+                      <option key={brand.code} value={brand.code}>
+                        {brand.name}
+                        {brand.countryCode ? `｜${brand.countryCode}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block text-sm font-semibold text-slate-600">
                   物料分類
                   <select
                     value={formState.categoryCode}
@@ -1067,7 +1314,7 @@ export function MaterialDirectory() {
                   </select>
                 </label>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <label className="block text-sm font-semibold text-slate-600">
                   預設倉庫
                   <select
@@ -1086,7 +1333,7 @@ export function MaterialDirectory() {
                   </select>
                 </label>
                 <label className="block text-sm font-semibold text-slate-600">
-                  首選供應商
+                  供應商
                   <select
                     value={formState.preferredSupplierCode}
                     onChange={(event) =>
@@ -1098,6 +1345,23 @@ export function MaterialDirectory() {
                     {suppliers.map((supplier) => (
                       <option key={supplier.code} value={supplier.code}>
                         {supplier.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm font-semibold text-slate-600">
+                  採購方式
+                  <select
+                    value={formState.purchaseMethodCode}
+                    onChange={(event) =>
+                      handleFormChange("purchaseMethodCode", event.target.value)
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                  >
+                    <option value="">（未指定）</option>
+                    {activePurchaseMethods.map((method) => (
+                      <option key={method.code} value={method.code}>
+                        {method.name}
                       </option>
                     ))}
                   </select>
@@ -1160,6 +1424,27 @@ export function MaterialDirectory() {
                 </label>
               </div>
               <label className="block text-sm font-semibold text-slate-600">
+                說明及附件
+                <textarea
+                  value={formState.description}
+                  onChange={(event) => handleFormChange("description", event.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                  placeholder="用途、附件說明或特殊注意事項"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-600">
+                檢索用關鍵字
+                <input
+                  type="text"
+                  value={formState.searchKeywords}
+                  onChange={(event) => handleFormChange("searchKeywords", event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                  placeholder="以逗號或空白分隔，例如：耐熱, 絕緣, 外銷"
+                />
+                <p className="text-xs text-slate-400">用於物料列表搜尋與關聯推薦。</p>
+              </label>
+              <label className="block text-sm font-semibold text-slate-600">
                 備註
                 <textarea
                   value={formState.note}
@@ -1169,6 +1454,23 @@ export function MaterialDirectory() {
                   placeholder="例如：僅用於某專案、需特殊檢驗..."
                 />
               </label>
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  系統資訊
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                  <div>
+                    <p className="font-semibold text-slate-600">建碼人</p>
+                    <p className="mt-1 text-sm text-slate-900">{creatorDisplayName}</p>
+                  </div>
+                  {editingMaterial?.createdByUserId && (
+                    <div>
+                      <p className="font-semibold text-slate-600">建碼 UID</p>
+                      <p className="mt-1 text-xs text-slate-500">{editingMaterial.createdByUserId}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
               {formError && <p className="text-sm font-semibold text-red-600">{formError}</p>}
               <div className="flex justify-end gap-3 pt-2">
                 <button

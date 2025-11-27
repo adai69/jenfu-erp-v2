@@ -54,6 +54,59 @@ export type Supplier = {
   note?: string;
 };
 
+export type CountryRegion =
+  | "asia"
+  | "europe"
+  | "america"
+  | "oceania"
+  | "africa"
+  | "middle-east"
+  | "other";
+
+export type Country = {
+  code: string;
+  nameZh: string;
+  nameEn?: string;
+  status: "active" | "inactive";
+  region?: CountryRegion;
+  phoneCode?: string;
+  currencyCode?: string;
+  sortOrder?: number;
+  note?: string;
+  createdByUserId?: string;
+  createdByEmployeeCode?: string;
+  createdByName?: string;
+};
+
+export type Brand = {
+  code: string;
+  name: string;
+  countryCode?: string;
+  status: "active" | "inactive";
+  website?: string;
+  description?: string;
+  note?: string;
+  sortOrder?: number;
+  createdByUserId?: string;
+  createdByEmployeeCode?: string;
+  createdByName?: string;
+};
+
+export type PurchaseMethodCategory = "general" | "contract" | "consignment" | "outsourcing" | "other";
+
+export type PurchaseMethod = {
+  code: string;
+  name: string;
+  category: PurchaseMethodCategory;
+  status: "active" | "inactive";
+  description?: string;
+  note?: string;
+  sortOrder?: number;
+  createdByUserId?: string;
+  createdByEmployeeCode?: string;
+  createdByName?: string;
+};
+
 export type PaymentTerm = {
   code: string;
   name: string;
@@ -102,7 +155,7 @@ export type Sequence = {
   prefix: string;
   padding: number;
   nextNumber: number;
-  scope: "報價" | "訂單" | "製令" | "序號" | "帳號" | "員工";
+  scope: "報價" | "訂單" | "製令" | "序號" | "帳號" | "員工" | "採購方式";
 };
 
 export type MaterialCategory = {
@@ -118,20 +171,28 @@ export type Material = {
   code: string;
   name: string;
   spec?: string;
+  model?: string;
+  brandCode?: string;
   type: "PS" | "PM" | "PO";
   categoryCode: string;
   unitCode: string;
   defaultWarehouseCode?: string;
   preferredSupplierCode?: string;
+  purchaseMethodCode?: string;
   purchaseLeadTimeDays?: number;
   stdCost?: number;
   currency?: string;
   status: "active" | "inactive";
   isStocked: boolean;
+  description?: string;
   note?: string;
+  searchKeywords?: string[];
   baseCode?: string;
   variantNo?: string;
   isVariant?: boolean;
+  createdByUserId?: string;
+  createdByEmployeeCode?: string;
+  createdByName?: string;
 };
 
 export type Warehouse = {

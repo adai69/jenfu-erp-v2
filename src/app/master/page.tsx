@@ -1,5 +1,7 @@
 import {
   categories,
+  brands,
+  countries,
   customers,
   employees,
   parts,
@@ -10,6 +12,16 @@ import {
   users,
 } from "@/data/masterRecords";
 import { DEPARTMENT_DEFINITIONS, ROLE_DEFINITIONS } from "@/types/auth";
+
+const countryRegionLabels: Record<string, string> = {
+  asia: "亞洲",
+  europe: "歐洲",
+  america: "美洲",
+  oceania: "大洋洲",
+  africa: "非洲",
+  "middle-east": "中東",
+  other: "其他",
+};
 
 const masterSets = [
   {
@@ -57,6 +69,35 @@ const masterSets = [
     updated: "11/18 09:20",
     headers: ["名稱", "等級", "交期(天)", "狀態"],
     rows: suppliers.map((s) => [s.name, `Level ${s.level}`, `${s.leadTimeDays}`, s.status]),
+  },
+  {
+    key: "brands",
+    title: "品牌 Brands",
+    description: "品牌代碼、國別與網站",
+    total: brands.length,
+    updated: "11/18 09:22",
+    headers: ["代碼", "品牌", "國別", "狀態"],
+    rows: brands.map((brand) => [
+      brand.code,
+      brand.name,
+      brand.countryCode ?? "—",
+      brand.status === "active" ? "使用中" : "停用",
+    ]),
+  },
+  {
+    key: "countries",
+    title: "國家 Countries",
+    description: "國別代碼 / 幣別 / 區域",
+    total: countries.length,
+    updated: "11/18 09:18",
+    headers: ["代碼", "中文", "英文", "區域", "幣別"],
+    rows: countries.map((country) => [
+      country.code,
+      country.nameZh,
+      country.nameEn ?? "—",
+      country.region ? countryRegionLabels[country.region] ?? country.region : "—",
+      country.currencyCode ?? "—",
+    ]),
   },
   {
     key: "customers",
@@ -111,7 +152,7 @@ const masterSets = [
 ];
 
 const summary = [
-  { label: "核心主檔", value: "9", note: "本階段完整定義" },
+  { label: "核心主檔", value: `${masterSets.length}`, note: "本階段完整定義" },
   { label: "員工人數", value: `${employees.length}`, note: "JFS 編號" },
   { label: "角色/單位", value: `${users.length}+${units.length}`, note: "跨模組共用" },
   { label: "供應/客戶", value: `${suppliers.length}/${customers.length}`, note: "採購/營銷" },
