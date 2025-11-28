@@ -33,15 +33,6 @@ const defaultFilters: MaterialFilter = {
   status: "all",
 };
 
-const variantOptions = [
-  { label: "桌面微調", value: "table-tuned" },
-  { label: "卡片版（手機）", value: "cards" },
-  { label: "精簡表格", value: "scroll-table" },
-  { label: "查詢優先", value: "search-first" },
-] as const;
-
-type Variant = (typeof variantOptions)[number]["value"];
-
 const mapMaterialDoc = (data: DocumentData, id: string): Material => ({
   code: data.code ?? id,
   name: data.name ?? "",
@@ -65,6 +56,16 @@ const mapMaterialDoc = (data: DocumentData, id: string): Material => ({
     (typeof data.baseCode === "string" && data.baseCode !== (data.code ?? id)),
 });
 
+const variantOptions = [
+  { label: "桌面微調", value: "table-tuned" },
+  { label: "卡片版（手機）", value: "cards" },
+  { label: "精簡表格", value: "scroll-table" },
+  { label: "查詢優先", value: "search-first" },
+  { label: "查詢＋卡片堆疊", value: "query-cards" },
+] as const;
+
+type Variant = (typeof variantOptions)[number]["value"];
+
 const typeLabelMap: Record<Material["type"], string> = {
   PS: "標準 (PS)",
   PM: "訂製 (PM)",
@@ -76,6 +77,7 @@ const variantDescriptions: Record<Variant, string> = {
   cards: "把每筆資料改成卡片堆疊，針對手機瀏覽優化。",
   "scroll-table": "保留表格心智，改以橫向捲動 + 精簡欄位展示。",
   "search-first": "首屏聚焦搜尋流程，進階篩選以摺疊方式呈現。",
+  "query-cards": "以搜尋為核心，結果以下方卡片堆疊展示重點欄位。",
 };
 
 export function MaterialStyleLab() {
@@ -86,7 +88,7 @@ export function MaterialStyleLab() {
   const [suppliers, setSuppliers] = useState<Supplier[]>(seedSuppliers);
   const [filters, setFilters] = useState<MaterialFilter>(defaultFilters);
   const [appliedFilters, setAppliedFilters] = useState<MaterialFilter>(defaultFilters);
-  const [variant, setVariant] = useState<Variant>("table-tuned");
+  const [variant, setVariant] = useState<Variant>("query-cards");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [viewingMaterial, setViewingMaterial] = useState<Material | null>(null);
   const [showViewPanel, setShowViewPanel] = useState(false);
@@ -546,6 +548,217 @@ export function MaterialStyleLab() {
     </div>
   );
 
+  const renderQueryCardsVariant = () => {
+    return (
+      <div className="space-y-5">
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-teal-600">
+                查詢＋卡片堆疊
+              </p>
+              <h2 className="text-2xl font-semibold text-slate-900">先輸入條件，再瀏覽卡片</h2>
+              <p className="text-sm text-slate-500">
+                介面保持清爽：先完成搜尋，再往下查看卡片式結果，手機也好操作。
+              </p>
+            </div>
+            <div className="rounded-full bg-slate-50 px-4 py-1 text-xs font-semibold text-slate-500">
+              {filteredMaterials.length} / {materials.length}
+            </div>
+          </div>
+          <form onSubmit={handleFilterSubmit} className="mt-4 space-y-3">
+            <label className="block">
+              <span className="text-xs font-semibold text-slate-600">搜尋關鍵字</span>
+              <input
+                type="text"
+                value={filters.keyword}
+                onChange={(event) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    keyword: event.target.value,
+                  }))
+                }
+                placeholder="先輸入料號、品名或規格再搜尋"
+                className="mt-1 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-teal-500 focus:outline-none"
+              />
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="submit"
+                className="rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-sm"
+              >
+                查詢物料
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters((prev) => !prev)}
+                className="rounded-full border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-600"
+              >
+                {showAdvancedFilters ? "收合進階篩選" : "顯示進階篩選"}
+              </button>
+            </div>
+            {showAdvancedFilters && (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="text-xs font-semibold text-slate-600">
+                    物料型態
+                    <select
+                      value={filters.type}
+                      onChange={(event) =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          type: event.target.value as MaterialFilter["type"],
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                    >
+                      <option value="all">全部型態</option>
+                      <option value="PS">標準 (PS)</option>
+                      <option value="PM">訂製 (PM)</option>
+                      <option value="PO">其他 (PO)</option>
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    分類
+                    <select
+                      value={filters.category}
+                      onChange={(event) =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          category: event.target.value as MaterialFilter["category"],
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                    >
+                      <option value="all">全部分類</option>
+                      {categories.map((category) => (
+                        <option key={category.code} value={category.code}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold text-slate-600">
+                    狀態
+                    <select
+                      value={filters.status}
+                      onChange={(event) =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          status: event.target.value as MaterialFilter["status"],
+                        }))
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                    >
+                      <option value="all">全部狀態</option>
+                      <option value="active">使用中</option>
+                      <option value="inactive">停用</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleFilterReset}
+                    className="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-600"
+                  >
+                    重置
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-full bg-teal-600 px-5 py-2 text-xs font-semibold text-white shadow-sm"
+                  >
+                    套用條件
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+        </section>
+
+        <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                搜尋結果 {filteredMaterials.length} 筆
+              </p>
+              <p className="text-xs text-slate-500">示範顯示前 24 筆，可改成分頁或無限滾動。</p>
+            </div>
+            <span className="rounded-full bg-slate-50 px-4 py-1 text-xs font-semibold text-slate-500">
+              卡片堆疊
+            </span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredMaterials.slice(0, 24).map((material) => (
+              <article
+                key={material.code}
+                className="flex flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      {material.code}
+                    </p>
+                    <h3 className="text-lg font-semibold text-slate-900">{material.name}</h3>
+                    <p className="text-xs text-slate-500">{material.spec || "—"}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 text-xs font-semibold">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+                      {typeLabelMap[material.type]}
+                    </span>
+                    <span
+                      className={`rounded-full px-3 py-1 ${
+                        material.status === "active"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {material.status === "active" ? "使用中" : "停用"}
+                    </span>
+                  </div>
+                </div>
+                <dl className="mt-3 grid gap-2 text-xs text-slate-600">
+                  <div className="flex justify-between gap-2">
+                    <dt className="font-semibold text-slate-700">分類</dt>
+                    <dd>{getCategoryName(material.categoryCode)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="font-semibold text-slate-700">計量單位</dt>
+                    <dd>{getUnitName(material.unitCode)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="font-semibold text-slate-700">預設倉庫</dt>
+                    <dd>{getWarehouseName(material.defaultWarehouseCode)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="font-semibold text-slate-700">供應商</dt>
+                    <dd>{getSupplierName(material.preferredSupplierCode)}</dd>
+                  </div>
+                </dl>
+                <div className="mt-4 flex items-center justify-between pt-3 text-xs">
+                  <p className="text-slate-500">
+                    {material.isStocked ? "納入庫存控管" : "不納入庫存控管"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openViewPanel(material)}
+                    disabled={!canRead}
+                    className="rounded-full border border-slate-300 px-4 py-1.5 font-semibold text-slate-700 hover:border-teal-500 hover:text-teal-600 disabled:opacity-40"
+                  >
+                    檢視
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+          {filteredMaterials.length === 0 && (
+            <p className="text-center text-sm text-slate-500">目前沒有符合條件的物料</p>
+          )}
+        </section>
+      </div>
+    );
+  };
+
   const renderVariantContent = () => {
     switch (variant) {
       case "table-tuned":
@@ -556,13 +769,15 @@ export function MaterialStyleLab() {
         return renderScrollTable();
       case "search-first":
         return renderSearchFirst();
+      case "query-cards":
+        return renderQueryCardsVariant();
       default:
         return null;
     }
   };
 
   const renderFilters = () => {
-    if (variant === "search-first") {
+    if (variant === "search-first" || variant === "query-cards") {
       return null;
     }
     return (
@@ -844,8 +1059,8 @@ export function MaterialStyleLab() {
         <p className="mt-3 text-xs text-slate-500">{variantDescriptions[variant]}</p>
       </div>
 
-      {variant === "search-first" ? (
-        <div>{renderSearchFirst()}</div>
+      {["search-first", "query-cards"].includes(variant) ? (
+        <div>{renderVariantContent()}</div>
       ) : (
         <>
           {renderFilters()}
